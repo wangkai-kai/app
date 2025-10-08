@@ -8,193 +8,202 @@ using System.IO;
 using System.IO.Ports;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+
 
 namespace app
 {
     public partial class Form1 : Form
     {
-        private WebView2 webView;
-        internal SerialPort serialPort;
+        private WebView2 _webView;
+        private WebInterface _webInterface; // 前端交互接口
         internal BackgroundWorker executionWorker;
         private bool isExecuting = false;
-        private bool isWebViewInitialized = false;
         private Timer refreshTimer;
+        private AllStep allStep = new AllStep();
+        private bool portTcp = false;
+        private TestTask testTask = new TestTask();
         public AppCore AppCore { get; private set; }
+
 
         public Form1()
         {
             InitializeComponent();
-            // 初始化顺序调整：先初始化组件，再初始化WebView
-            InitializeComponent();
-            AppCore = new AppCore(this);
-            serialPort = new SerialPort();
             InitializeExecutionWorker();
-            // 使用异步方法初始化WebView
+            AppCore = new AppCore(SendMessageToWebView);
             _ = InitializeWebViewAsync();
             InitializeTimer();
         }
+
         private void InitializeTimer()
         {
-            // 初始化定时器
-            refreshTimer = new Timer();
-            // 设置刷新间隔（毫秒），这里设置为1秒刷新一次
-            refreshTimer.Interval = 1000;
-            // 绑定定时事件
+            refreshTimer = new Timer
+            {
+                Interval = 1000
+            };
             refreshTimer.Tick += RefreshTimer_Tick;
-            // 启动定时器
-           // refreshTimer.Start();
+            // refreshTimer.Start();
         }
+
         private void RefreshTimer_Tick(object sender, EventArgs e)
         {
-
+            // 定时任务逻辑
         }
 
-        // 异步初始化软件界面
+        /// <summary>
+        /// 初始化WebView并创建前端交互接口
+        /// </summary>
         private async Task InitializeWebViewAsync()
         {
-            webView = new WebView2
+            _webView = new WebView2
             {
                 Dock = DockStyle.Fill
             };
 
-            // 添加WebView初始化完成事件
-            webView.CoreWebView2InitializationCompleted += WebView_CoreWebView2InitializationCompleted;
+            // 初始化前端交互接口
+            _webInterface = new WebInterface(this, _webView);
+            _webInterface.CommandReceived += OnWebCommandReceived; // 订阅前端命令
 
             // 初始化WebView环境
-            await webView.EnsureCoreWebView2Async(null);
+            await _webView.EnsureCoreWebView2Async(null);
 
-            // 配置WebView
-            webView.CoreWebView2.Settings.IsScriptEnabled = true;
-            webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+            // 加载HTML页面
+            _webInterface.LoadHtmlPage();
 
-            // 注册供JavaScript调用的对象
-            webView.CoreWebView2.AddHostObjectToScript("appCore", AppCore);
-
-            // 注册脚本消息接收事件（用于前端调用）
-            webView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
-
-            // 加载HTML文件
-            string htmlPath1 = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "htmlPages/step.html");
-            if (File.Exists(htmlPath1))
-            {
-                webView.CoreWebView2.Navigate(new Uri(htmlPath1).AbsoluteUri);
-            }
-            else
-            {
-                MessageBox.Show($"找不到HTML文件: {htmlPath1}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                webView.CoreWebView2.NavigateToString("<h1>HTML文件未找到</h1>");
-            }
-
-            this.Controls.Add(webView);
-            isWebViewInitialized = true;
+            this.Controls.Add(_webView);
         }
 
-        //WebView初始化完成事件处理
-        private void WebView_CoreWebView2InitializationCompleted(object sender, CoreWebView2InitializationCompletedEventArgs e)
+        /// <summary>
+        /// 处理前端命令（由WebInterface触发）
+        /// </summary>
+        private void OnWebCommandReceived(WebCommand command)
         {
-            if (e.IsSuccess)
+            switch (command.Command)
             {
-                isWebViewInitialized = true;
-                // 初始化完成后立即刷新一次端口列表
-                var ports = AppCore.GetAvailableComPorts();
-                SendMessageToWebView("comPortsUpdated", ports);
-                SendMessageToWebView("info", new { message = "WebView初始化完成，已准备就绪" });
-            }
-            else
-            {
-                MessageBox.Show($"WebView初始化失败: {e.InitializationException.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                case "Rnu":
+                    HandleRunCommand(command);
+                    break;
+                case "clearCount":
+                    HandleClearCount();
+                    break;
+                case "refreshComPorts":
+                    HandleRefreshComPorts();
+                    break;
+                case "openComPort":
+                    HandleOpenComPort(command);
+                    break;
+                case "closeComPort":
+                    HandleCloseComPort();
+                    break;
+                case "ConfigLoaded":
+                    HandleConfigLoaded(command);
+                    break;
+                default:
+                    System.Diagnostics.Debug.WriteLine($"未知命令: {command.Command}");
+                    break;
             }
         }
 
-        // 处理来自前端的消息，添加详细日志
-        private void CoreWebView2_WebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
+        #region 命令处理方法
+        private void HandleRunCommand(WebCommand command)
         {
-            try
+            var once = command.Parameters["once"].ToString();
+            var time = int.Parse(command.Parameters["time"].ToString());
+            var run = bool.Parse(command.Parameters["run"].ToString());
+            if (run)
             {
-                var message = e.TryGetWebMessageAsString();
-                if (!string.IsNullOrEmpty(message))
+                if (once == "single")
                 {
-                    // 调试：输出接收到的消息
-                    System.Diagnostics.Debug.WriteLine($"收到前端消息: {message}");
-
-                    // 解析前端消息
-                    var command = JsonConvert.DeserializeObject<WebCommand>(message);
-
-                    switch (command.Command)
-                    {
-                        case "refreshComPorts":
-                            System.Diagnostics.Debug.WriteLine("处理刷新COM端口命令");
-                            // 刷新COM端口并返回结果
-                            var ports = AppCore.GetAvailableComPorts();
-                            SendMessageToWebView("comPortsUpdated", ports);
-                            break;
-
-                        case "openComPort":
-                            System.Diagnostics.Debug.WriteLine("处理打开COM端口命令");
-                            // 打开COM端口
-                            var portName = command.Parameters["portName"].ToString();
-                            var baudRate = int.Parse(command.Parameters["baudRate"].ToString());
-                            var result = AppCore.OpenComPort(portName, baudRate);
-                            SendMessageToWebView("comPortStatus", new { isOpen = result, portName = portName });
-                            break;
-
-                        case "closeComPort":
-                            System.Diagnostics.Debug.WriteLine("处理关闭COM端口命令");
-                            // 关闭COM端口
-                            AppCore.CloseComPort();
-                            SendMessageToWebView("comPortStatus", new { isOpen = false });
-                            break;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"处理前端消息出错: {ex.Message}");
-                SendMessageToWebView("error", new { message = $"处理命令时出错: {ex.Message}" });
-            }
-        }
-
-        // 发送消息到前端，增强错误处理
-        public void SendMessageToWebView(string command, object data)
-        {
-            try
-            {
-                if (!isWebViewInitialized || webView?.CoreWebView2 == null || this.IsDisposed)
-                {
-                    System.Diagnostics.Debug.WriteLine("WebView尚未初始化，无法发送消息");
-                    return;
-                }
-
-                var message = JsonConvert.SerializeObject(new
-                {
-                    command = command,
-                    data = data
-                });
-
-                // 调试：输出发送的消息
-                System.Diagnostics.Debug.WriteLine($"发送到前端消息: {message}");
-
-                // 确保在UI线程执行
-                if (this.InvokeRequired)
-                {
-                    this.Invoke((MethodInvoker)delegate
-                    {
-                        webView.CoreWebView2.PostWebMessageAsString(message);
-                    });
+                    start_task(portTcp, true, 1);
                 }
                 else
                 {
-                    webView.CoreWebView2.PostWebMessageAsString(message);
+                    start_task(portTcp, false, time);
                 }
+            }
+            else
+            {
+                testTask.Stop();
+            }
+        }
+        private void HandleClearCount()
+        {
+            
+        }
+
+        private void HandleRefreshComPorts()
+        {
+            System.Diagnostics.Debug.WriteLine("处理刷新COM端口命令");
+            var ports= AppCore.GetAvailableComPorts();
+            _webInterface.SendMessage("comPortsUpdated", ports);
+        }
+
+        private void HandleOpenComPort(WebCommand command)
+        {
+            System.Diagnostics.Debug.WriteLine("处理打开通信接口命令");
+            var portType = command.Parameters["portType"].ToString();
+
+            if (portType == "serial")
+            {
+                var portName = command.Parameters["portName"].ToString();
+                var baudRate = int.Parse(command.Parameters["baudRate"].ToString());
+                var dataBits = int.Parse(command.Parameters["dataBits"].ToString());
+                var parity = command.Parameters["parity"].ToString();
+                // 打开串口逻辑
+                portTcp = false;
+            }
+            else if (portType == "tcp")
+            {
+                var tcpIp = command.Parameters["tcpIp"].ToString();
+                var tcpPort = int.Parse(command.Parameters["tcpPort"].ToString());
+                // 打开TCP服务逻辑
+                portTcp = true;
+            }
+
+            _webInterface.SendMessage("comPortStatus", new { isOpen = true });
+        }
+
+        private void HandleCloseComPort()
+        {
+            _webInterface.SendMessage("comPortStatus", new { isOpen = false });
+        }
+        private void HandleConfigLoaded(WebCommand command)
+        {
+            try
+            {
+             
+                if (command.data == null)
+                {
+                    _webInterface.SendMessage("error", new { message = "ConfigLoaded 命令的 data 为空" });
+                    return;
+                }
+                string dataJson = JsonConvert.SerializeObject(command.data);
+                List<TestStep> newSteps = JsonConvert.DeserializeObject<List<TestStep>>(dataJson);
+
+                if (newSteps == null || newSteps.Count == 0)
+                {
+                    _webInterface.SendMessage("error", new { message = "解析配置数据为空或格式错误" });
+                    return;
+                }
+                // 3. 正常添加步骤
+                allStep.AddStep(newSteps);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"发送消息到前端出错: {ex.Message}");
+                _webInterface.SendMessage("error", new { message = $"解析配置失败：{ex.Message}" });
+                System.Diagnostics.Debug.WriteLine($"HandleConfigLoaded 异常：{ex.Message}\n{ex.StackTrace}");
             }
         }
 
-        // 初始化执行工作线程
+        #endregion
+
+        /// <summary>
+        /// 供外部调用的发送消息方法（如AppCore）
+        /// </summary>
+        public void SendMessageToWebView(string command, object data)
+        {
+            _webInterface?.SendMessage(command, data);
+        }
+
         private void InitializeExecutionWorker()
         {
             executionWorker = new BackgroundWorker();
@@ -205,9 +214,8 @@ namespace app
 
         private void ExecutionWorker_DoWork(object sender, DoWorkEventArgs e)
         {
-            // 执行测试逻辑
             isExecuting = true;
-            // 这里添加实际执行代码
+            // 执行测试逻辑
         }
 
         private void ExecutionWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
@@ -216,166 +224,63 @@ namespace app
             // 执行完成处理
         }
 
+        public void start_task(bool istcp, bool once, int intervalSeconds)
+        {
+            // 绑定测试任务与前端的交互委托
+            testTask.SyncStep = (index) =>
+            {
+                _webInterface.SendMessage("stepUpdate", new { index = index + 1 });
+                return true;
+            };
+
+            testTask.SyncResult = (result) =>
+            {
+                _webInterface.SendMessage("testResult", new { success = result });
+                return true;
+            };
+
+            // 绑定硬件通信委托
+            testTask.SendDataFunc = (data) =>
+            {
+                try
+                {
+                    if (istcp)
+                    {
+                        // TCP发送逻辑
+                    }
+                    else
+                    {
+                        // 串口发送逻辑
+             
+                    }
+                    _webInterface.SendMessage("dataSent", new { data = BitConverter.ToString(data) });
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    _webInterface.SendMessage("error", new { message = $"发送失败: {ex.Message}" });
+                    return false;
+                }
+            };
+
+            // 启动测试任务
+            _ = testTask.RunTaskAsync(once, intervalSeconds, allStep.GetAllStep());
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing && (components != null))
             {
                 components.Dispose();
             }
-
-            // 清理资源
-            if (serialPort != null && serialPort.IsOpen)
-                serialPort.Close();
-
-            serialPort?.Dispose();
-            webView?.Dispose();
+            _webView?.Dispose();
             executionWorker?.Dispose();
+            refreshTimer?.Dispose();
 
             base.Dispose(disposing);
         }
     }
 
-    // 应用核心功能类 - 供前端调用
-    [System.Runtime.InteropServices.ComVisible(true)]
-    public class AppCore
-    {
-        private Form1 _form;
 
-        public AppCore(Form1 form)
-        {
-            _form = form;
-        }
 
-        // 获取可用COM端口列表，添加调试信息
-        public string[] GetAvailableComPorts()
-        {
-            try
-            {
-                System.Diagnostics.Debug.WriteLine("开始扫描COM端口");
-
-                // 获取系统中所有可用的COM端口
-                string[] ports = SerialPort.GetPortNames();
-
-                // 调试：输出找到的端口
-                System.Diagnostics.Debug.WriteLine($"找到 {ports.Length} 个COM端口: {string.Join(", ", ports)}");
-
-                // 排序端口号（确保COM1, COM2, COM3...的顺序）
-                Array.Sort(ports, (a, b) =>
-                {
-                    if (!int.TryParse(a.Replace("COM", ""), out int numA))
-                        return 1;
-                    if (!int.TryParse(b.Replace("COM", ""), out int numB))
-                        return -1;
-                    return numA.CompareTo(numB);
-                });
-
-                return ports;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"获取COM端口失败: {ex.Message}");
-                _form.SendMessageToWebView("error", new { message = $"获取COM端口失败: {ex.Message}" });
-                return new string[0];
-            }
-        }
-
-        // 其他方法保持不变...
-        public bool OpenComPort(string portName, int baudRate)
-        {
-            // 保持原有实现
-            try
-            {
-                // 如果端口已打开，先关闭
-                if (_form.serialPort.IsOpen)
-                    _form.serialPort.Close();
-
-                // 配置串口参数
-                _form.serialPort.PortName = portName;
-                _form.serialPort.BaudRate = baudRate;
-                _form.serialPort.Parity = Parity.None;
-                _form.serialPort.DataBits = 8;
-                _form.serialPort.StopBits = StopBits.One;
-                _form.serialPort.Handshake = Handshake.None;
-                _form.serialPort.ReadTimeout = 500;
-                _form.serialPort.WriteTimeout = 500;
-
-                // 打开串口
-                _form.serialPort.Open();
-
-                // 注册数据接收事件
-                _form.serialPort.DataReceived += SerialPort_DataReceived;
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"打开COM端口失败: {ex.Message}");
-                _form.SendMessageToWebView("error", new { message = $"打开COM端口失败: {ex.Message}" });
-                return false;
-            }
-        }
-
-        public void CloseComPort()
-        {
-            // 保持原有实现
-            try
-            {
-                if (_form.serialPort.IsOpen)
-                {
-                    // 移除事件订阅
-                    _form.serialPort.DataReceived -= SerialPort_DataReceived;
-                    _form.serialPort.Close();
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"关闭COM端口失败: {ex.Message}");
-                _form.SendMessageToWebView("error", new { message = $"关闭COM端口失败: {ex.Message}" });
-            }
-        }
-
-        private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
-        {
-            // 保持原有实现
-            try
-            {
-                if (_form.serialPort.IsOpen)
-                {
-                    string data = _form.serialPort.ReadExisting();
-                    // 将接收到的数据发送到前端
-                    _form.SendMessageToWebView("serialDataReceived", data);
-                }
-            }
-            catch (Exception ex)
-            {
-                _form.SendMessageToWebView("error", new { message = $"串口接收错误: {ex.Message}" });
-            }
-        }
-
-        public bool SendSerialData(string data)
-        {
-            // 保持原有实现
-            try
-            {
-                if (_form.serialPort.IsOpen)
-                {
-                    _form.serialPort.Write(data);
-                    return true;
-                }
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _form.SendMessageToWebView("error", new { message = $"串口发送错误: {ex.Message}" });
-                return false;
-            }
-        }
-    }
-
-    // 前端命令模型
-    public class WebCommand
-    {
-        public string Command { get; set; }
-        public Dictionary<string, object> Parameters { get; set; } = new Dictionary<string, object>();
-    }
 }
