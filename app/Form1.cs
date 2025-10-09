@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.IO.Ports;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -79,7 +80,7 @@ namespace app
         {
             switch (command.Command)
             {
-                case "Rnu":
+                case "Run":
                     HandleRunCommand(command);
                     break;
                 case "clearCount":
@@ -119,6 +120,7 @@ namespace app
                 {
                     start_task(portTcp, false, time);
                 }
+                _webInterface.SendMessage("comRunSet", new { run = true });
             }
             else
             {
@@ -227,18 +229,26 @@ namespace app
         public void start_task(bool istcp, bool once, int intervalSeconds)
         {
             // 绑定测试任务与前端的交互委托
-            testTask.SyncStep = (index) =>
+            testTask.SyncStep = (index, active) =>
             {
-                _webInterface.SendMessage("stepUpdate", new { index = index + 1 });
+                _webInterface.SendMessage("stepUpdate", new { index = index, active = active});
                 return true;
             };
-
+            testTask.SyncStop = () =>
+            {
+                _webInterface.SendMessage("comRunSet", new { run = false });
+                return true;
+            };
             testTask.SyncResult = (result) =>
             {
-                _webInterface.SendMessage("testResult", new { success = result });
+                _webInterface.SendMessage("comResult", new { success = result});
                 return true;
             };
-
+            testTask.resetStep = () =>
+            {
+                _webInterface.SendMessage("resetStep", null);
+                return true;
+            };
             // 绑定硬件通信委托
             testTask.SendDataFunc = (data) =>
             {
@@ -253,7 +263,7 @@ namespace app
                         // 串口发送逻辑
              
                     }
-                    _webInterface.SendMessage("dataSent", new { data = BitConverter.ToString(data) });
+                    Console.WriteLine("发送数据:"+ data);
                     return true;
                 }
                 catch (Exception ex)

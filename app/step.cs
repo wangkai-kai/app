@@ -57,7 +57,15 @@ namespace app
         /// </summary>
         /// <param name="index">步骤索引</param>
         /// <returns>是否允许继续执行</returns>
-        public Func<int, bool> SyncStep { get; set; } = (index) => true;
+        public Func<int,string, bool> SyncStep { get; set; } = (index,active) => true;
+
+        /// <summary>
+        /// 重置所有步骤状态到前端
+        /// </summary>
+        /// <param name="index">步骤索引</param>
+        /// <returns>是否允许继续执行</returns>
+        public Func< bool> resetStep { get; set; } = () => true;
+
 
         /// <summary>
         /// 上报测试结果到前端
@@ -206,17 +214,12 @@ namespace app
             {
                 return false;
             }
-
+            resetStep();
             for (int i = 0; i < steps.Count; i++)
             {
                 var step = steps[i];
 
                 // 上报当前步骤状态到前端，若前端返回false则终止测试
-                if (!SyncStep(i))
-                {
-                    return false;
-                }
-
                 bool stepSuccess = false;
                 try
                 {
@@ -251,22 +254,19 @@ namespace app
                             stepSuccess = false;
                             break;
                     }
+                    if (!SyncStep(i, stepSuccess? "pass" : "fail"))
+                    {
+                        
+                    }
                 }
                 catch (Exception ex)
                 {
                     // 捕获步骤执行异常，标记为失败
                     Console.WriteLine($"步骤 {i + 1} 执行异常: {ex.Message}");
                     stepSuccess = false;
-                }
-
-                // 若当前步骤失败，终止单次测试
-                if (!stepSuccess)
-                {
-                    return false;
-                }
+                }          
             }
-
-            return true;
+                return true;
         }
 
         /// <summary>
@@ -281,7 +281,6 @@ namespace app
             // 重置运行状态和取消令牌
             _isRunning = true;
             _cts = new CancellationTokenSource();
-
             try
             {
                 if (once)
@@ -289,6 +288,7 @@ namespace app
                     // 执行单次测试
                     bool result = await RunOnceAsync(steps);
                     _ = SyncResult(result); // 上报测试结果
+                 
                 }
                 else
                 {
@@ -307,6 +307,7 @@ namespace app
                         // 循环间隔（支持取消）
                         await StepDelay(intervalSeconds * 1000);
                     }
+                
                 }
             }
             finally
