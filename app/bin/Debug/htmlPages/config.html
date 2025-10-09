@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试流程设计系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+
+    <!-- Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36D399',
+                        warning: '#FBBD23',
+                        danger: '#F87272',
+                        neutral: '#191D24',
+                        "base-100": '#FFFFFF',
+                        "base-200": '#F2F3F5',
+                        "base-300": '#E5E6EB',
+                    },
+                    fontFamily: {
+                        inter: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+
+            .step-highlight {
+                @apply ring-2 ring-primary ring-offset-2;
+            }
+
+            .dragging {
+                @apply opacity-70 scale-105 cursor-grabbing;
+            }
+
+            .modal-backdrop {
+                @apply fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4;
+            }
+
+            .modal-content {
+                @apply bg-white rounded-lg shadow-lg w-full max-w-md p-6 transform transition-all;
+            }
+
+            .hex-hint {
+                @apply text-xs text-gray-500 italic mt-1 block;
+            }
+        }
+    </style>
+</head>
+<body class="font-inter bg-base-200 text-neutral min-h-screen flex flex-col">
+    <!-- 顶部导航 -->
+    <header class="bg-white shadow-sm py-4 px-6 flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+            <i class="fa fa-cogs text-primary text-2xl"></i>
+            <h1 class="text-xl font-bold text-neutral">测试流程设计系统</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <label for="load-config" class="flex items-center px-4 py-2 bg-secondary text-white rounded-md hover:bg-secondary/90 transition cursor-pointer">
+                <i class="fa fa-upload mr-2"></i>加载配置
+            </label>
+            <input id="load-config" type="file" accept=".json" class="hidden">
+            <button id="save-btn" class="flex items-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition">
+                <i class="fa fa-save mr-2"></i>保存流程
+            </button>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="flex-1 flex flex-col md:flex-row p-4 gap-4">
+        <!-- 左侧：步骤库 -->
+        <div class="w-full md:w-64 bg-white rounded-lg shadow-sm p-4 h-auto md:h-[calc(100vh-8rem)] flex flex-col">
+            <h2 class="text-lg font-semibold mb-4 pb-2 border-b border-base-300">步骤库</h2>
+            <div class="space-y-3 flex-1">
+                <div class="step-item p-3 bg-base-200 rounded-md cursor-move hover:bg-base-300 transition flex items-center" draggable="true" data-type="send">
+                    <i class="fa fa-paper-plane text-primary mr-3"></i>
+                    <div>
+                        <div class="font-medium">发送内容</div>
+                        <div class="text-xs text-gray-500">发送指定内容</div>
+                    </div>
+                </div>
+
+                <div class="step-item p-3 bg-base-200 rounded-md cursor-move hover:bg-base-300 transition flex items-center" draggable="true" data-type="delay">
+                    <i class="fa fa-clock-o text-warning mr-3"></i>
+                    <div>
+                        <div class="font-medium">延时等待</div>
+                        <div class="text-xs text-gray-500">等待指定时间</div>
+                    </div>
+                </div>
+
+                <div class="step-item p-3 bg-base-200 rounded-md cursor-move hover:bg-base-300 transition flex items-center" draggable="true" data-type="receive">
+                    <i class="fa fa-inbox text-secondary mr-3"></i>
+                    <div>
+                        <div class="font-medium">接收内容</div>
+                        <div class="text-xs text-gray-500">接收并验证内容</div>
+                    </div>
+                </div>
+
+                <!-- 新增的清除接收步骤 -->
+                <div class="step-item p-3 bg-base-200 rounded-md cursor-move hover:bg-base-300 transition flex items-center" draggable="true" data-type="clear">
+                    <i class="fa fa-eraser text-secondary mr-3"></i>
+                    <div>
+                        <div class="font-medium">清除接收</div>
+                        <div class="text-xs text-gray-500">清除接收缓冲区</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 中间：流程设计区 -->
+        <div class="flex-1 bg-white rounded-lg shadow-sm p-4 h-[calc(100vh-8rem)] flex flex-col">
+            <div class="flex justify-between items-center mb-4 pb-2 border-b border-base-300">
+                <h2 class="text-lg font-semibold">流程设计区</h2>
+                <div class="flex space-x-2">
+                    <button id="clear-flow" class="text-sm px-3 py-1 bg-base-200 rounded hover:bg-base-300 transition">
+                        <i class="fa fa-trash mr-1"></i>清空
+                    </button>
+                    <button id="prev-btn" class="text-sm px-3 py-1 bg-base-200 rounded hover:bg-base-300 transition">
+                        <i class="fa fa-undo mr-1"></i>上一步
+                    </button>
+                    <button id="next-btn" class="text-sm px-3 py-1 bg-base-200 rounded hover:bg-base-300 transition opacity-50 cursor-not-allowed">
+                        <i class="fa fa-redo mr-1"></i>下一步
+                    </button>
+                </div>
+            </div>
+
+            <div id="flow-container" class="flex-1 bg-base-200/50 rounded-md p-6 overflow-auto relative">
+                <div id="flow-steps" class="min-h-full space-y-6 relative">
+                    <!-- 提示文本 -->
+                    <div id="empty-flow-hint" class="h-full flex flex-col items-center justify-center text-gray-400">
+                        <i class="fa fa-arrow-left text-4xl mb-4 opacity-50"></i>
+                        <p>从左侧步骤库拖拽步骤到这里来构建测试流程</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧：属性配置 -->
+        <div class="w-full md:w-72 bg-white rounded-lg shadow-sm p-4 h-auto md:h-[calc(100vh-8rem)] flex flex-col">
+            <h2 class="text-lg font-semibold mb-4 pb-2 border-b border-base-300">属性配置</h2>
+            <div id="step-properties" class="flex-1">
+                <div id="no-selection" class="h-full flex items-center justify-center text-gray-400">
+                    请选择一个步骤进行配置
+                </div>
+
+                <form id="properties-form" class="hidden space-y-4">
+                    <input type="hidden" id="step-id">
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">步骤名称</label>
+                        <input type="text" id="step-name" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                    </div>
+
+                    <!-- 发送内容特有属性 -->
+                    <div class="step-specific send-specific hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">发送内容</label>
+                        <textarea id="send-content" rows="3" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50"></textarea>
+
+                        <div class="flex items-center mb-2 mt-3">
+                            <input type="checkbox" id="send-is-hex" class="mr-2">
+                            <label for="send-is-hex" class="text-sm font-medium text-gray-700">hex格式</label>
+                        </div>
+                        <div id="send-hex-hint" class="hex-hint hidden">示例格式: 12 34 56 AA (空格分隔 字节)</div>
+                    </div>
+
+                    <!-- 延时特有属性 -->
+                    <div class="step-specific delay-specific hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">延时时间 (毫秒)</label>
+                        <input type="number" id="delay-time" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" min="100" value="1000">
+                    </div>
+
+                    <!-- 接收内容特有属性 -->
+                    <div class="step-specific receive-specific hidden">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">验证条件</label>
+                        <select id="validation-type" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                            <option value="exists">内容存在</option>
+                            <option value="equals">等于指定值</option>
+                            <option value="contains">包含指定值</option>
+                        </select>
+
+                        <div id="validation-value-container" class="mt-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">验证值</label>
+                            <input type="text" id="validation-value" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                        </div>
+
+                        <div class="flex items-center mb-2 mt-3">
+                            <input type="checkbox" id="receive-is-hex" class="mr-2">
+                            <label for="receive-is-hex" class="text-sm font-medium text-gray-700">hex格式</label>
+                        </div>
+                        <div id="receive-hex-hint" class="hex-hint hidden">示例格式: 12 34 56 AA (空格分隔的 字节)</div>
+                    </div>
+                    <!-- 清除缓存属性 -->
+                    <div class="step-specific clear-specific hidden">
+                        <div class="text-sm text-gray-500 p-3 bg-base-200 rounded-md">
+                            此步骤将清除接收缓冲区中的所有数据
+                        </div>
+                    </div>
+
+                    <div class="flex justify-end space-x-2 pt-2">
+                        <button type="button" id="delete-step" class="px-3 py-1 text-sm bg-danger text-white rounded hover:bg-danger/90 transition">
+                            <i class="fa fa-trash mr-1"></i>删除
+                        </button>
+                        <button type="submit" class="px-3 py-1 text-sm bg-primary text-white rounded hover:bg-primary/90 transition">
+                            <i class="fa fa-save mr-1"></i>保存
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // 全局状态管理 - 新增future数组存储可以前进的操作
+        const state = {
+            steps: [],
+            currentStepId: null,
+            history: [],
+            future: []
+        };
+
+        // 更新上一步和下一步按钮状态
+        function updateStepButtons() {
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+
+            // 更新上一步按钮状态
+            if (state.history.length === 0) {
+                prevBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                prevBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+
+            // 更新下一步按钮状态
+            if (state.future.length === 0) {
+                nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            } else {
+                nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+
+        // 生成唯一ID
+        function generateId() {
+            return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+        }
+
+        // 初始化步骤数据
+        function getDefaultStepData(type) {
+            const base = {
+                id: generateId(),
+                type,
+                name: getStepTypeName(type)
+            };
+
+            switch (type) {
+                case 'send':
+                    return {
+                        ...base,
+                        content: '',
+                        isHex: false // 16进制标识
+                    };
+                case 'delay':
+                    return {
+                        ...base,
+                        time: 1000
+                    };
+                case 'receive':
+                    return {
+                        ...base,
+                        validation: {
+                            type: 'exists',
+                            value: ''
+                        },
+                        isHex: false // 16进制标识
+                    };
+                case 'clear':
+                    return {
+                        ...base
+                    };
+                default:
+                    return base;
+            }
+        }
+
+        // 获取步骤类型名称
+        function getStepTypeName(type) {
+            const names = {
+                'send': '发送内容',
+                'delay': '延时等待',
+                'receive': '接收内容',
+                'clear': '清除接收'
+            };
+            return names[type] || type;
+        }
+
+        // 获取步骤图标
+        function getStepIcon(type) {
+            const icons = {
+                'send': '<i class="fa fa-paper-plane text-primary mr-2"></i>',
+                'delay': '<i class="fa fa-clock-o text-warning mr-2"></i>',
+                'receive': '<i class="fa fa-inbox text-secondary mr-2"></i>',
+                'clear': '<i class="fa fa-eraser text-secondary mr-2"></i>' 
+            };
+            return icons[type] || '<i class="fa fa-cog mr-2"></i>';
+        }
+
+        // 保存历史记录 - 新增操作时清空future数组
+        function saveHistory() {
+            state.history.push(JSON.stringify([...state.steps]));
+            // 限制历史记录数量
+            if (state.history.length > 20) {
+                state.history.shift();
+            }
+            // 新增操作时清空未来操作记录
+            state.future = [];
+            // 更新按钮状态
+            updateStepButtons();
+        }
+
+        // 上一步操作
+        function goToPreviousStep() {
+            if (state.history.length === 0) return;
+
+            // 将当前状态存入future数组，以便可能的下一步操作
+            state.future.push(JSON.stringify([...state.steps]));
+            // 从历史记录中获取上一步状态
+            const previousState = state.history.pop();
+            if (previousState) {
+                state.steps = JSON.parse(previousState);
+                renderFlowSteps();
+                deselectStep();
+            }
+            // 更新按钮状态
+            updateStepButtons();
+        }
+
+        // 下一步操作
+        function goToNextStep() {
+            if (state.future.length === 0) return;
+
+            // 将当前状态存入history数组，以便可能的上一步操作
+            state.history.push(JSON.stringify([...state.steps]));
+            // 从future数组中获取下一步状态
+            const nextState = state.future.pop();
+            if (nextState) {
+                state.steps = JSON.parse(nextState);
+                renderFlowSteps();
+                deselectStep();
+            }
+            // 更新按钮状态
+            updateStepButtons();
+        }
+
+        // 添加步骤到流程
+        function addStepToFlow(type) {
+            saveHistory();
+            const step = getDefaultStepData(type);
+            state.steps.push(step);
+            renderFlowSteps();
+            selectStep(step.id);
+        }
+
+        // 渲染流程步骤
+        function renderFlowSteps() {
+            const container = document.getElementById('flow-steps');
+            const emptyHint = document.getElementById('empty-flow-hint');
+
+            // 显示/隐藏空提示
+            if (state.steps.length === 0) {
+                emptyHint.classList.remove('hidden');
+            } else {
+                emptyHint.classList.add('hidden');
+            }
+
+            // 清空容器（保留空提示）
+            Array.from(container.children).forEach(child => {
+                if (child.id !== 'empty-flow-hint') {
+                    container.removeChild(child);
+                }
+            });
+
+            // 添加步骤元素
+            state.steps.forEach((step, index) => {
+                const stepEl = document.createElement('div');
+                stepEl.className = `step-block bg-white p-4 rounded-lg shadow-sm border-l-4 ${step.type === 'send' ? 'border-primary' :
+                        step.type === 'delay' ? 'border-warning' : 'border-secondary'
+                    } ${state.currentStepId === step.id ? 'step-highlight' : ''} cursor-pointer relative`;
+                stepEl.dataset.id = step.id;
+
+                // 添加步骤内容
+                stepEl.innerHTML = `
+                        <div class="flex justify-between items-start">
+                            <div class="flex items-center">
+                                <div class="flex-shrink-0">${getStepIcon(step.type)}</div>
+                                <div>
+                                    <div class="font-medium">${step.name}</div>
+                                    <div class="text-xs text-gray-500 mt-1">
+                                        ${getStepDetails(step)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex space-x-1">
+                                <button class="move-step up text-gray-400 hover:text-neutral ${index === 0 ? 'opacity-50 cursor-not-allowed' : ''}" data-id="${step.id}">
+                                    <i class="fa fa-arrow-up"></i>
+                                </button>
+                                <button class="move-step down text-gray-400 hover:text-neutral ${index === state.steps.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" data-id="${step.id}">
+                                    <i class="fa fa-arrow-down"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+
+                container.appendChild(stepEl);
+
+                // 添加点击事件
+                stepEl.addEventListener('click', (e) => {
+                    // 如果点击的是移动按钮，不触发选择
+                    if (!e.target.closest('.move-step')) {
+                        selectStep(step.id);
+                    }
+                });
+            });
+
+            // 添加移动步骤事件监听
+            document.querySelectorAll('.move-step.up').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = e.currentTarget.dataset.id;
+                    moveStepUp(id);
+                });
+            });
+
+            document.querySelectorAll('.move-step.down').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = e.currentTarget.dataset.id;
+                    moveStepDown(id);
+                });
+            });
+        }
+
+        // 获取步骤详情文本
+        function getStepDetails(step) {
+            let details = '';
+            if (step.isHex) {
+                details += '[hex] ';
+            }
+
+            switch (step.type) {
+                case 'send':
+                    // 只显示内容摘要
+                    const contentPreview = step.content.length > 20
+                        ? step.content.substring(0, 20) + '...'
+                        : step.content || '未设置内容';
+                    details += `内容: ${contentPreview}`;
+                    break;
+                case 'delay':
+                    details += `等待: ${step.time} 毫秒`;
+                    break;
+                case 'receive':
+                    details += `验证: ${step.validation?.type || '存在'}`;
+                    if (step.validation?.type !== 'exists' && step.validation?.value) {
+                        details += ` (${step.validation.value})`;
+                    }
+                    break;
+                case 'clear':  // 添加clear类型的详情
+                    details += '清空接收缓冲区';
+                default:
+                    details = '';
+            }
+            return details;
+        }
+
+        // 选择步骤
+        function selectStep(id) {
+            state.currentStepId = id;
+            const step = state.steps.find(s => s.id === id);
+
+            if (!step) return;
+
+            // 更新UI高亮
+            renderFlowSteps();
+
+            // 显示属性表单
+            document.getElementById('no-selection').classList.add('hidden');
+            document.getElementById('properties-form').classList.remove('hidden');
+
+            // 填充表单数据
+            document.getElementById('step-id').value = step.id;
+            document.getElementById('step-name').value = step.name;
+
+            // 隐藏所有特定类型属性
+            document.querySelectorAll('.step-specific').forEach(el => {
+                el.classList.add('hidden');
+            });
+
+            // 显示当前类型的属性
+            document.querySelector(`.${step.type}-specific`).classList.remove('hidden');
+
+            // 填充特定类型数据
+            if (step.type === 'send') {
+                document.getElementById('send-content').value = step.content || '';
+                document.getElementById('send-is-hex').checked = step.isHex || false;
+                // 显示/隐藏16进制提示
+                document.getElementById('send-hex-hint').classList.toggle('hidden', !step.isHex);
+            } else if (step.type === 'delay') {
+                document.getElementById('delay-time').value = step.time || 1000;
+            } else if (step.type === 'receive') {
+                document.getElementById('validation-type').value = step.validation?.type || 'exists';
+                document.getElementById('validation-value').value = step.validation?.value || '';
+                document.getElementById('receive-is-hex').checked = step.isHex || false;
+                // 显示/隐藏16进制提示
+                document.getElementById('receive-hex-hint').classList.toggle('hidden', !step.isHex);
+
+                // 控制验证值的显示
+                toggleValidationValueField();
+            }
+        }
+
+        // 取消选择步骤
+        function deselectStep() {
+            state.currentStepId = null;
+            renderFlowSteps();
+            document.getElementById('properties-form').classList.add('hidden');
+            document.getElementById('no-selection').classList.remove('hidden');
+        }
+
+        // 保存步骤属性
+        function saveStepProperties(id) {
+            const step = state.steps.find(s => s.id === id);
+            if (!step) return;
+
+            saveHistory();
+
+            // 更新公共属性
+            step.name = document.getElementById('step-name').value || getStepTypeName(step.type);
+
+            // 更新特定类型属性
+            if (step.type === 'send') {
+                step.content = document.getElementById('send-content').value;
+                step.isHex = document.getElementById('send-is-hex').checked; // 保存16进制状态
+            } else if (step.type === 'delay') {
+                step.time = parseInt(document.getElementById('delay-time').value) || 1000;
+            } else if (step.type === 'receive') {
+                step.validation = {
+                    type: document.getElementById('validation-type').value,
+                    value: document.getElementById('validation-value').value
+                };
+                step.isHex = document.getElementById('receive-is-hex').checked; // 保存16进制状态
+            }
+
+            renderFlowSteps();
+        }
+
+        // 删除步骤
+        function deleteStep(id) {
+            if (!confirm('确定要删除这个步骤吗？')) return;
+
+            saveHistory();
+            state.steps = state.steps.filter(step => step.id !== id);
+            deselectStep();
+            renderFlowSteps();
+        }
+
+        // 移动步骤上移
+        function moveStepUp(id) {
+            const index = state.steps.findIndex(step => step.id === id);
+            if (index <= 0) return;
+
+            saveHistory();
+            // 交换位置
+            [state.steps[index], state.steps[index - 1]] = [state.steps[index - 1], state.steps[index]];
+            renderFlowSteps();
+        }
+
+        // 移动步骤下移
+        function moveStepDown(id) {
+            const index = state.steps.findIndex(step => step.id === id);
+            if (index === -1 || index >= state.steps.length - 1) return;
+
+            saveHistory();
+            // 交换位置
+            [state.steps[index], state.steps[index + 1]] = [state.steps[index + 1], state.steps[index]];
+            renderFlowSteps();
+        }
+
+        // 清空流程
+        function clearFlow() {
+            if (state.steps.length === 0) return;
+            if (!confirm('确定要清空整个流程吗？')) return;
+
+            saveHistory();
+            state.steps = [];
+            deselectStep();
+            renderFlowSteps();
+        }
+
+        // 切换验证值字段的显示
+        function toggleValidationValueField() {
+            const type = document.getElementById('validation-type').value;
+            const container = document.getElementById('validation-value-container');
+
+            if (type === 'exists') {
+                container.classList.add('hidden');
+            } else {
+                container.classList.remove('hidden');
+            }
+        }
+
+        // 切换16进制提示显示
+        function toggleHexHint(checkboxId, hintId) {
+            const checkbox = document.getElementById(checkboxId);
+            const hint = document.getElementById(hintId);
+            hint.classList.toggle('hidden', !checkbox.checked);
+        }
+
+        // 通过浏览器下载保存配置文件
+        function downloadFlowConfig() {
+            if (state.steps.length === 0) {
+                alert('流程为空，无需保存');
+                return;
+            }
+
+            try {
+                // 生成默认文件名
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const fileName = `test-flow-${timestamp}.json`;
+
+                // 准备要保存的数据
+                const flowData = JSON.stringify(state.steps, null, 2);
+
+                // 创建Blob对象
+                const blob = new Blob([flowData], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+
+                // 创建下载链接
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+
+                // 触发下载
+                a.click();
+
+                // 清理
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 0);
+
+            } catch (err) {
+                console.error('保存文件失败:', err);
+                alert('保存文件失败: ' + err.message);
+            }
+        }
+
+        // 加载配置
+        function loadConfig(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.name.endsWith('.json')) {
+                alert('请选择JSON格式的配置文件');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const steps = JSON.parse(e.target.result);
+
+                    // 验证配置格式
+                    if (!Array.isArray(steps)) {
+                        throw new Error('配置格式不正确，应为步骤数组');
+                    }
+
+                    saveHistory();
+                    state.steps = steps;
+                    renderFlowSteps();
+                    deselectStep();
+                    alert('配置加载成功');
+                } catch (error) {
+                    alert(`加载配置失败: ${error.message}`);
+                }
+            };
+            reader.readAsText(file);
+
+            // 重置文件输入，允许重复选择同一文件
+            event.target.value = '';
+        }
+
+        // 初始化拖拽功能
+        function initDragAndDrop() {
+            const stepItems = document.querySelectorAll('.step-item');
+            const flowContainer = document.getElementById('flow-container');
+
+            // 为步骤库中的项目添加拖拽事件
+            stepItems.forEach(item => {
+                item.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', item.dataset.type);
+                    item.classList.add('dragging');
+                });
+
+                item.addEventListener('dragend', () => {
+                    item.classList.remove('dragging');
+                });
+            });
+
+            // 为流程容器添加拖拽目标事件
+            flowContainer.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                flowContainer.classList.add('bg-base-200');
+            });
+
+            flowContainer.addEventListener('dragleave', () => {
+                flowContainer.classList.remove('bg-base-200');
+            });
+
+            flowContainer.addEventListener('drop', (e) => {
+                e.preventDefault();
+                flowContainer.classList.remove('bg-base-200');
+
+                const type = e.dataTransfer.getData('text/plain');
+                if (type) {
+                    addStepToFlow(type);
+                }
+            });
+        }
+
+        // 初始化事件监听
+        function initEventListeners() {
+            // 属性表单提交
+            document.getElementById('properties-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const id = document.getElementById('step-id').value;
+                saveStepProperties(id);
+            });
+
+            // 删除步骤按钮
+            document.getElementById('delete-step').addEventListener('click', () => {
+                const id = document.getElementById('step-id').value;
+                deleteStep(id);
+            });
+
+            // 清空流程按钮
+            document.getElementById('clear-flow').addEventListener('click', clearFlow);
+
+            // 上一步按钮
+            document.getElementById('prev-btn').addEventListener('click', goToPreviousStep);
+
+            // 下一步按钮
+            document.getElementById('next-btn').addEventListener('click', goToNextStep);
+
+            // 保存流程按钮
+            document.getElementById('save-btn').addEventListener('click', downloadFlowConfig);
+
+            // 加载配置按钮
+            document.getElementById('load-config').addEventListener('change', loadConfig);
+
+            // 验证类型变化时
+            document.getElementById('validation-type').addEventListener('change', toggleValidationValueField);
+
+            // 16进制复选框变化时显示/隐藏提示
+            document.getElementById('send-is-hex').addEventListener('change', () => {
+                toggleHexHint('send-is-hex', 'send-hex-hint');
+            });
+
+            document.getElementById('receive-is-hex').addEventListener('change', () => {
+                toggleHexHint('receive-is-hex', 'receive-hex-hint');
+            });
+        }
+
+        // 初始化应用
+        function initApp() {
+            initDragAndDrop();
+            initEventListeners();
+            renderFlowSteps();
+            // 初始化按钮状态
+            updateStepButtons();
+        }
+
+        // 启动应用
+        document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>

@@ -229,11 +229,6 @@ namespace app
         public Dictionary<string, object> Parameters { get; set; } = new Dictionary<string, object>();
         public dynamic data { get; set; }   // 对应前端的 "data"（直接用 dynamic 接收数组，无需 Dictionary）
     }
-    // 辅助类
-    public class WebMessage
-    {
-        public string Command { get; set; }
-        public dynamic Data { get; set; }
-    }
+
 
 }
