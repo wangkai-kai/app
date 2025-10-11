@@ -123,7 +123,7 @@ namespace app
             {
                 if (IsOpen)
                 {
-                    _serialPort.DataReceived -= recvHexCallback; // 解绑事件
+                   // _serialPort.DataReceived -= recvHexCallback; // 解绑事件
                     _serialPort.Close();
                 }
                 recvNUM = 0; // 重置缓冲区计数

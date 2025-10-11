@@ -55,6 +55,10 @@
             .hex-hint {
                 @apply text-xs text-gray-500 italic mt-1 block;
             }
+
+            .step-selected {
+                @apply bg-primary/5;
+            }
         }
     </style>
 </head>
@@ -122,6 +126,9 @@
             <div class="flex justify-between items-center mb-4 pb-2 border-b border-base-300">
                 <h2 class="text-lg font-semibold">流程设计区</h2>
                 <div class="flex space-x-2">
+                    <button id="copy-selected" class="text-sm px-3 py-1 bg-primary text-white rounded hover:bg-primary/90 transition opacity-50 cursor-not-allowed">
+                        <i class="fa fa-copy mr-1"></i>复制所选
+                    </button>
                     <button id="clear-flow" class="text-sm px-3 py-1 bg-base-200 rounded hover:bg-base-300 transition">
                         <i class="fa fa-trash mr-1"></i>清空
                     </button>
@@ -140,6 +147,7 @@
                     <div id="empty-flow-hint" class="h-full flex flex-col items-center justify-center text-gray-400">
                         <i class="fa fa-arrow-left text-4xl mb-4 opacity-50"></i>
                         <p>从左侧步骤库拖拽步骤到这里来构建测试流程</p>
+                        <p class="mt-2 text-sm">按住Ctrl键可选择多个步骤进行复制</p>
                     </div>
                 </div>
             </div>
@@ -220,10 +228,12 @@
     </main>
 
     <script>
-        // 全局状态管理 - 新增future数组存储可以前进的操作
+        // 全局状态管理 - 新增选中步骤数组和Ctrl键状态
         const state = {
             steps: [],
             currentStepId: null,
+            selectedStepIds: [], // 存储选中的步骤ID
+            isCtrlPressed: false, // 记录Ctrl键是否按下
             history: [],
             future: []
         };
@@ -232,6 +242,7 @@
         function updateStepButtons() {
             const prevBtn = document.getElementById('prev-btn');
             const nextBtn = document.getElementById('next-btn');
+            const copyBtn = document.getElementById('copy-selected');
 
             // 更新上一步按钮状态
             if (state.history.length === 0) {
@@ -245,6 +256,13 @@
                 nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
             } else {
                 nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+
+            // 更新复制按钮状态
+            if (state.selectedStepIds.length > 0) {
+                copyBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                copyBtn.classList.add('opacity-50', 'cursor-not-allowed');
             }
         }
 
@@ -308,12 +326,12 @@
                 'send': '<i class="fa fa-paper-plane text-primary mr-2"></i>',
                 'delay': '<i class="fa fa-clock-o text-warning mr-2"></i>',
                 'receive': '<i class="fa fa-inbox text-secondary mr-2"></i>',
-                'clear': '<i class="fa fa-eraser text-secondary mr-2"></i>' 
+                'clear': '<i class="fa fa-eraser text-secondary mr-2"></i>'
             };
             return icons[type] || '<i class="fa fa-cog mr-2"></i>';
         }
 
-        // 保存历史记录 - 新增操作时清空future数组
+        // 保存历史记录
         function saveHistory() {
             state.history.push(JSON.stringify([...state.steps]));
             // 限制历史记录数量
@@ -336,6 +354,7 @@
             const previousState = state.history.pop();
             if (previousState) {
                 state.steps = JSON.parse(previousState);
+                state.selectedStepIds = []; // 清空选择
                 renderFlowSteps();
                 deselectStep();
             }
@@ -353,6 +372,7 @@
             const nextState = state.future.pop();
             if (nextState) {
                 state.steps = JSON.parse(nextState);
+                state.selectedStepIds = []; // 清空选择
                 renderFlowSteps();
                 deselectStep();
             }
@@ -367,6 +387,42 @@
             state.steps.push(step);
             renderFlowSteps();
             selectStep(step.id);
+        }
+
+        // 复制选中的步骤
+        function copySelectedSteps() {
+            if (state.selectedStepIds.length === 0) return;
+
+            saveHistory();
+
+            // 获取选中的步骤并复制（生成新ID）
+            const stepsToCopy = state.selectedStepIds.map(id => {
+                const originalStep = state.steps.find(s => s.id === id);
+                if (!originalStep) return null;
+
+                // 深拷贝步骤并生成新ID
+                const copiedStep = JSON.parse(JSON.stringify(originalStep));
+                copiedStep.id = generateId();
+                // 在名称后添加"副本"标识
+                copiedStep.name = `${copiedStep.name} (副本)`;
+                return copiedStep;
+            }).filter(Boolean);
+
+            if (stepsToCopy.length === 0) return;
+
+            // 将复制的步骤添加到原步骤后面
+            const lastSelectedIndex = state.steps.findIndex(s => s.id === state.selectedStepIds[state.selectedStepIds.length - 1]);
+            if (lastSelectedIndex !== -1) {
+                // 从最后一个选中步骤的后面插入
+                state.steps.splice(lastSelectedIndex + 1, 0, ...stepsToCopy);
+            } else {
+                // 兜底：添加到末尾
+                state.steps.push(...stepsToCopy);
+            }
+
+            // 更新选择状态 - 选中新复制的步骤
+            state.selectedStepIds = stepsToCopy.map(step => step.id);
+            renderFlowSteps();
         }
 
         // 渲染流程步骤
@@ -391,42 +447,64 @@
             // 添加步骤元素
             state.steps.forEach((step, index) => {
                 const stepEl = document.createElement('div');
+                // 判断是否选中
+                const isSelected = state.selectedStepIds.includes(step.id);
+
                 stepEl.className = `step-block bg-white p-4 rounded-lg shadow-sm border-l-4 ${step.type === 'send' ? 'border-primary' :
-                        step.type === 'delay' ? 'border-warning' : 'border-secondary'
-                    } ${state.currentStepId === step.id ? 'step-highlight' : ''} cursor-pointer relative`;
+                    step.type === 'delay' ? 'border-warning' : 'border-secondary'
+                    } ${state.currentStepId === step.id ? 'step-highlight' : ''} ${isSelected ? 'step-selected' : ''} cursor-pointer relative`;
                 stepEl.dataset.id = step.id;
 
-                // 添加步骤内容
+                // 添加步骤内容（包含复选框用于多选）
                 stepEl.innerHTML = `
-                        <div class="flex justify-between items-start">
-                            <div class="flex items-center">
-                                <div class="flex-shrink-0">${getStepIcon(step.type)}</div>
-                                <div>
-                                    <div class="font-medium">${step.name}</div>
-                                    <div class="text-xs text-gray-500 mt-1">
-                                        ${getStepDetails(step)}
+                            <div class="flex justify-between items-start">
+                                <div class="flex items-center">
+                                    <!-- 多选复选框 -->
+                                    <div class="flex-shrink-0 mr-2">
+                                        <input type="checkbox" class="step-checkbox" data-id="${step.id}" ${isSelected ? 'checked' : ''}>
+                                    </div>
+                                    <div class="flex-shrink-0">${getStepIcon(step.type)}</div>
+                                    <div>
+                                        <div class="font-medium">${step.name}</div>
+                                        <div class="text-xs text-gray-500 mt-1">
+                                            ${getStepDetails(step)}
+                                        </div>
                                     </div>
                                 </div>
+                                <div class="flex space-x-1">
+                                    <button class="move-step up text-gray-400 hover:text-neutral ${index === 0 ? 'opacity-50 cursor-not-allowed' : ''}" data-id="${step.id}">
+                                        <i class="fa fa-arrow-up"></i>
+                                    </button>
+                                    <button class="move-step down text-gray-400 hover:text-neutral ${index === state.steps.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" data-id="${step.id}">
+                                        <i class="fa fa-arrow-down"></i>
+                                    </button>
+                                </div>
                             </div>
-                            <div class="flex space-x-1">
-                                <button class="move-step up text-gray-400 hover:text-neutral ${index === 0 ? 'opacity-50 cursor-not-allowed' : ''}" data-id="${step.id}">
-                                    <i class="fa fa-arrow-up"></i>
-                                </button>
-                                <button class="move-step down text-gray-400 hover:text-neutral ${index === state.steps.length - 1 ? 'opacity-50 cursor-not-allowed' : ''}" data-id="${step.id}">
-                                    <i class="fa fa-arrow-down"></i>
-                                </button>
-                            </div>
-                        </div>
-                    `;
+                        `;
 
                 container.appendChild(stepEl);
 
                 // 添加点击事件
                 stepEl.addEventListener('click', (e) => {
-                    // 如果点击的是移动按钮，不触发选择
-                    if (!e.target.closest('.move-step')) {
-                        selectStep(step.id);
+                    // 如果点击的是移动按钮或复选框，不触发选择
+                    if (!e.target.closest('.move-step') && !e.target.closest('.step-checkbox')) {
+                        if (state.isCtrlPressed) {
+                            // Ctrl+点击：切换选中状态
+                            toggleStepSelection(step.id);
+                        } else {
+                            // 普通点击：选中单个步骤
+                            selectStep(step.id);
+                            state.selectedStepIds = [step.id];
+                        }
+                        renderFlowSteps();
                     }
+                });
+
+                // 复选框事件
+                stepEl.querySelector('.step-checkbox').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleStepSelection(step.id);
+                    renderFlowSteps();
                 });
             });
 
@@ -446,6 +524,22 @@
                     moveStepDown(id);
                 });
             });
+
+            // 更新按钮状态
+            updateStepButtons();
+        }
+
+        // 切换步骤选中状态
+        function toggleStepSelection(id) {
+            const index = state.selectedStepIds.indexOf(id);
+            if (index === -1) {
+                // 选中步骤
+                state.selectedStepIds.push(id);
+            } else {
+                // 取消选中
+                state.selectedStepIds.splice(index, 1);
+            }
+            updateStepButtons();
         }
 
         // 获取步骤详情文本
@@ -567,6 +661,8 @@
 
             saveHistory();
             state.steps = state.steps.filter(step => step.id !== id);
+            // 从选中列表中移除
+            state.selectedStepIds = state.selectedStepIds.filter(stepId => stepId !== id);
             deselectStep();
             renderFlowSteps();
         }
@@ -600,6 +696,7 @@
 
             saveHistory();
             state.steps = [];
+            state.selectedStepIds = []; // 清空选择
             deselectStep();
             renderFlowSteps();
         }
@@ -685,6 +782,7 @@
 
                     saveHistory();
                     state.steps = steps;
+                    state.selectedStepIds = []; // 清空选择
                     renderFlowSteps();
                     deselectStep();
                     alert('配置加载成功');
@@ -760,6 +858,9 @@
             // 下一步按钮
             document.getElementById('next-btn').addEventListener('click', goToNextStep);
 
+            // 复制选中步骤按钮
+            document.getElementById('copy-selected').addEventListener('click', copySelectedSteps);
+
             // 保存流程按钮
             document.getElementById('save-btn').addEventListener('click', downloadFlowConfig);
 
@@ -776,6 +877,24 @@
 
             document.getElementById('receive-is-hex').addEventListener('change', () => {
                 toggleHexHint('receive-is-hex', 'receive-hex-hint');
+            });
+
+            // 监听Ctrl键按下和释放
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Control') {
+                    state.isCtrlPressed = true;
+                }
+            });
+
+            document.addEventListener('keyup', (e) => {
+                if (e.key === 'Control') {
+                    state.isCtrlPressed = false;
+                }
+            });
+
+            // 防止失去焦点时Ctrl状态不正确
+            window.addEventListener('blur', () => {
+                state.isCtrlPressed = false;
             });
         }
 

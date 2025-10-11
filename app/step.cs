@@ -246,12 +246,16 @@ namespace app
                                  receivedData = ReadReceivedDataFunc(step.isHex);
                                 if (receivedData != "")
                                 { 
+
                                     break;
                                 }
-                                else await StepDelay(10);
+                                else await StepDelay(5);
                             }
                             stepSuccess = ValidateReceivedData(receivedData, step.validation);
-                            SyncInfo(receivedData);
+                            if (!stepSuccess)
+                            {
+                                SyncInfo(receivedData);
+                            }                           
                             break;
 
                         case "delay":
