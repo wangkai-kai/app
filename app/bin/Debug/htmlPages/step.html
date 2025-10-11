@@ -151,12 +151,14 @@
                             <label class="block text-sm font-medium text-gray-700 mb-1">通信方式</label>
                             <select id="communication-type" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
                                 <option value="serial">串口通信</option>
-                                <option value="tcp">TCP服务端</option>
+                                <option value="tcp">TCP clent</option>
                             </select>
                         </div>
 
                         <!-- 串口配置参数 -->
-                        <div id="serial-config" class="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <!-- 串口配置参数（新增停止位选择） -->
+                        <div id="serial-config" class="flex-1 grid grid-cols-2 md:grid-cols-5 gap-3">
+                            <!-- 原有：端口选择 -->
                             <div class="relative">
                                 <label class="block text-sm font-medium text-gray-700 mb-1">端口</label>
                                 <div class="flex">
@@ -168,6 +170,7 @@
                                     </button>
                                 </div>
                             </div>
+                            <!--波特率 -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">波特率</label>
                                 <select id="baud-rate-select" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
@@ -176,12 +179,13 @@
                                     <option value="19200">19200</option>
                                     <option value="38400">38400</option>
                                     <option value="57600">57600</option>
-                                    <option value="115200" selected>115200</option>
+                                    <option value="115200" selected>19200</option>
                                     <option value="230400">230400</option>
                                     <option value="460800">460800</option>
                                     <option value="921600">921600</option>
                                 </select>
                             </div>
+                            <!--数据位 -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">数据位</label>
                                 <select id="data-bits-select" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
@@ -191,38 +195,59 @@
                                     <option value="5">5</option>
                                 </select>
                             </div>
+                            <!--校验位 -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">校验位</label>
                                 <select id="parity-select" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
-                                    <option value="none" selected>无</option>
-                                    <option value="odd">奇校验</option>
-                                    <option value="even">偶校验</option>
+                                    <option value="none" selected>none</option>
+                                    <option value="odd">odd</option>
+                                    <option value="even">even</option>
+                                </select>
+                            </div>
+                            <!--停止位 -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">停止位</label>
+                                <select id="stop-bits-select" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
+                                    <option value="1" selected>1位</option> <!-- 默认1位，最常用 -->
+                                    <option value="1.5">1.5位</option> <!-- 适配部分低速设备（如RS232） -->
+                                    <option value="2">2位</option> <!-- 高可靠性场景使用 -->
                                 </select>
                             </div>
                         </div>
 
-                        <!-- TCP配置参数 -->
-                        <div id="tcp-config" class="flex-1 hidden grid grid-cols-2 gap-3">
+                        <!-- TCP配置参数（新增连接状态指示器） -->
+                        <div id="tcp-config" class="flex-1 hidden grid grid-cols-3 gap-3">
+                            <!-- IP地址配置 -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">IP地址</label>
-                                <input type="text" id="tcp-ip" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" value="127.0.0.1">
+                                <input type="text" id="tcp-ip" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" value="192.168.56.1">
                             </div>
+                            <!-- 端口配置 -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">端口</label>
-                                <input type="number" id="tcp-port" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" value="8080" min="1" max="65535">
+                                <input type="number" id="tcp-port" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" value="502" min="1" max="65535">
+                            </div>
+                            <!-- 连接状态指示器 -->
+                            <div class="flex flex-col justify-end">
+                                <!-- 与输入框底部对齐 -->
+                                <label class="block text-sm font-medium text-gray-700 mb-1">连接状态</label>
+                                <div id="tcp-connect-status" class="flex items-center gap-2 px-3 py-2 border border-red-300 bg-red-50 rounded-md text-red-600">
+                                    <!-- 状态图标（未连接：红色圆圈；已连接：绿色对勾） -->
+                                    <span id="status-icon" class="w-3 h-3 rounded-full bg-red-500"></span>
+                                    <span id="status-text">未连接</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- 打开/关闭控制按钮 -->
-                    <!-- 始终上下排列的简化版 -->
-                    <div class="flex flex-col gap-1 w-fit">
-                        <label class="block text-sm font-medium text-gray-700">通信</label>
-                        <button id="connect-btn" class="flex items-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition">
-                            <i class="fa fa-plug mr-2"></i>打开
-                        </button>
+                        <!-- 打开/关闭控制按钮 -->
+                        <!-- 始终上下排列的简化版 -->
+                        <div class="flex flex-col gap-1 w-fit">
+                            <label class="block text-sm font-medium text-gray-700">通信</label>
+                            <button id="connect-btn" class="flex items-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition">
+                                <i class="fa fa-plug mr-2"></i>打开
+                            </button>
+                        </div>
                     </div>
-                </div>
                 <div id="file-load-error" class="mt-1 text-sm text-danger hidden">配置文件格式不正确</div>
             </div>
 
@@ -322,6 +347,7 @@
             comPortSelect: document.getElementById('com-port-select'),
             baudRateSelect: document.getElementById('baud-rate-select'),
             dataBitsSelect: document.getElementById('data-bits-select'),
+            stopBits: document.getElementById('stop-bits-select'),
             paritySelect: document.getElementById('parity-select'),
             refreshComBtn: document.getElementById('refresh-com'),
             connectBtn: document.getElementById('connect-btn'),
@@ -448,7 +474,7 @@
             } else {
                 elements.serialConfig.classList.add('hidden');
                 elements.tcpConfig.classList.remove('hidden');
-                addTestLog('已选择: TCP服务端', 'info');
+                addTestLog('已选择: TCP客户端', 'info');
             }
         }
 
@@ -460,7 +486,9 @@
             }
 
             switch (message.command) {
-
+                case 'tcpState':
+                    handleTCPUpdated(message.data);
+                    break;
                 case 'comRunSet':
                     handleComRunUpdated(message.data);
                     break;
@@ -479,8 +507,8 @@
                 case 'comPortStatus':
                     handleComPortStatusChanged(message.data);
                     break;
-                case 'serialDataReceived':
-                    addTestLog(`收到数据: ${message.data}`, 'info');
+                case 'hdmessage':
+                    addTestLog(`收到数据: ${message.data.info}`, 'info');
                     break;
                 case 'error':
                     addTestLog(`错误: ${message.data?.message || '未知错误'}`, 'fail');
@@ -556,6 +584,35 @@
             // 确保按钮始终可用
             elements.connectBtn.disabled = false;
         }
+        // 同步TCP客户端的状态
+        function handleTCPUpdated(status) {
+            // 获取状态指示器的DOM元素（与之前添加的状态标签对应）
+            const statusContainer = document.getElementById('tcp-connect-status');
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('status-text');
+
+            if (status.online) {
+                // 状态：已连接（绿色样式）
+                // 更新容器样式（边框、背景色）
+                statusContainer.className = 'flex items-center gap-2 px-3 py-2 border border-green-300 bg-green-50 rounded-md text-green-600';
+                // 更新状态图标（绿色圆点）
+                statusIcon.className = 'w-3 h-3 rounded-full bg-green-500';
+                // 更新状态文本
+                statusText.textContent = '已连接';
+                // 可选：禁用IP和端口输入框（连接状态下不允许修改）
+                document.getElementById('tcp-ip').disabled = true;
+                document.getElementById('tcp-port').disabled = true;
+            } else {
+                // 状态：未连接/已断开（红色样式）
+                statusContainer.className = 'flex items-center gap-2 px-3 py-2 border border-red-300 bg-red-50 rounded-md text-red-600';
+                statusIcon.className = 'w-3 h-3 rounded-full bg-red-500';
+                statusText.textContent = '未连接';
+                // 可选：启用IP和端口输入框（断开状态下允许修改）
+                document.getElementById('tcp-ip').disabled = false;
+                document.getElementById('tcp-port').disabled = false;
+            }
+        }
+
         // 处理测试任务运行状态
         function handleComRunUpdated(status) {
             state.isTesting = status.run;
@@ -648,6 +705,7 @@
                         const baudRate = parseInt(elements.baudRateSelect.value);//波特率
                         const dataBits = parseInt(elements.dataBitsSelect.value);//数据位
                         const parity = elements.paritySelect.value;//校验位
+                        const stops = elements.stopBits.value;//校验位
                         const command = {
                             command: 'openComPort',
                             parameters: {
@@ -655,7 +713,8 @@
                                 portName: portName,
                                 baudRate: baudRate,
                                 dataBits: dataBits,
-                                parity: parity
+                                parity: parity,
+                                stops: stops
                             }
                         };
                         window.chrome.webview.postMessage(JSON.stringify(command));

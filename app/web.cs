@@ -205,7 +205,7 @@ namespace app
                     data = data
                 });
 
-                System.Diagnostics.Debug.WriteLine($"发送到前端消息: {message}");
+                //System.Diagnostics.Debug.WriteLine($"发送到前端消息: {message}");
 
                 // 确保在UI线程执行
                 if (_form.InvokeRequired)

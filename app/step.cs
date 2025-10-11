@@ -60,6 +60,14 @@ namespace app
         public Func<int,string, bool> SyncStep { get; set; } = (index,active) => true;
 
         /// <summary>
+        /// 上报步骤状态到前端
+        /// </summary>
+        /// <param name="index">步骤索引</param>
+        /// <returns>是否允许继续执行</returns>
+        public Func<string, bool>SyncInfo { get; set; } = (message) => true;
+
+
+        /// <summary>
         /// 重置所有步骤状态到前端
         /// </summary>
         /// <param name="index">步骤索引</param>
@@ -130,7 +138,6 @@ namespace app
             _cts.Cancel();       // 取消所有异步操作
             _ = SyncStop?.Invoke();  // 通知前端测试已停止
         }
-
         /// <summary>
         /// 字符串转字节数组（支持普通字符串和16进制字符串）
         /// </summary>
@@ -210,6 +217,7 @@ namespace app
         /// <returns>单次测试是否成功</returns>
         public async Task<bool> RunOnceAsync(List<TestStep> steps)
         {
+            bool suc = true;
             if (steps == null || steps.Count == 0)
             {
                 return false;
@@ -230,11 +238,20 @@ namespace app
                             byte[] dataToSend = ConvertToBytes(step.content, step.isHex);
                             stepSuccess = SendDataFunc(dataToSend);
                             break;
-
                         case "receive":
                             // 读取接收数据并验证
-                            string receivedData = ReadReceivedDataFunc(step.isHex);
+                            string receivedData="";
+                            for (int t = 0; t < 30; t++)
+                            {
+                                 receivedData = ReadReceivedDataFunc(step.isHex);
+                                if (receivedData != "")
+                                { 
+                                    break;
+                                }
+                                else await StepDelay(10);
+                            }
                             stepSuccess = ValidateReceivedData(receivedData, step.validation);
+                            SyncInfo(receivedData);
                             break;
 
                         case "delay":
@@ -258,15 +275,20 @@ namespace app
                     {
                         
                     }
+                    if (!stepSuccess)
+                    {
+                        suc = false;
+                    }
                 }
                 catch (Exception ex)
                 {
                     // 捕获步骤执行异常，标记为失败
                     Console.WriteLine($"步骤 {i + 1} 执行异常: {ex.Message}");
                     stepSuccess = false;
+                    suc = false;
                 }          
             }
-                return true;
+                return suc;
         }
 
         /// <summary>
@@ -299,7 +321,7 @@ namespace app
                         _ = SyncResult(result); // 上报本次循环结果
 
                         // 若测试失败或已停止，退出循环
-                        if (!result || !_isRunning)
+                        if (!_isRunning)
                         {
                             break;
                         }

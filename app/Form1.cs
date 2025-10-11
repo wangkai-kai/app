@@ -16,38 +16,52 @@ namespace app
     public partial class Form1 : Form
     {
         private WebView2 _webView;
-        private WebInterface _webInterface; // 前端交互接口
+        private WebInterface _webInterface; 
         internal BackgroundWorker executionWorker;
         private bool isExecuting = false;
         private Timer refreshTimer;
         private AllStep allStep = new AllStep();
         private bool portTcp = false;
+        private bool tcpOnline = false;
         private TestTask testTask = new TestTask();
         public AppCore AppCore { get; private set; }
 
+        private MYTcpClient _tcpClient;
+        private MYSerial _serial;
 
         public Form1()
         {
             InitializeComponent();
             InitializeExecutionWorker();
+            _tcpClient = new MYTcpClient();
+            _serial=new MYSerial();
+
             AppCore = new AppCore(SendMessageToWebView);
             _ = InitializeWebViewAsync();
             InitializeTimer();
+
         }
 
         private void InitializeTimer()
         {
             refreshTimer = new Timer
             {
-                Interval = 1000
+                Interval = 200
             };
             refreshTimer.Tick += RefreshTimer_Tick;
-            // refreshTimer.Start();
+             refreshTimer.Start();
         }
 
         private void RefreshTimer_Tick(object sender, EventArgs e)
         {
-            // 定时任务逻辑
+            if (portTcp)
+            {
+                if (tcpOnline != _tcpClient.IsConnected())
+                {
+                    tcpOnline = _tcpClient.IsConnected();
+                    _webInterface.SendMessage("tcpState", new { online = tcpOnline });
+                }
+            }
         }
 
         /// <summary>
@@ -150,8 +164,12 @@ namespace app
                 var baudRate = int.Parse(command.Parameters["baudRate"].ToString());
                 var dataBits = int.Parse(command.Parameters["dataBits"].ToString());
                 var parity = command.Parameters["parity"].ToString();
+                var stop = command.Parameters["stops"].ToString();
                 // 打开串口逻辑
                 portTcp = false;
+                _serial.Open(portName, baudRate, dataBits, parity, stop);
+
+
             }
             else if (portType == "tcp")
             {
@@ -159,6 +177,8 @@ namespace app
                 var tcpPort = int.Parse(command.Parameters["tcpPort"].ToString());
                 // 打开TCP服务逻辑
                 portTcp = true;
+                _tcpClient.Connect(tcpIp, tcpPort);
+             
             }
 
             _webInterface.SendMessage("comPortStatus", new { isOpen = true });
@@ -166,6 +186,11 @@ namespace app
 
         private void HandleCloseComPort()
         {
+            if (portTcp)
+            {
+                _tcpClient.Disconnect();
+            }
+            else _serial.Close();
             _webInterface.SendMessage("comPortStatus", new { isOpen = false });
         }
         private void HandleConfigLoaded(WebCommand command)
@@ -241,12 +266,17 @@ namespace app
             };
             testTask.SyncResult = (result) =>
             {
-                _webInterface.SendMessage("comResult", new { success = result});
+                _webInterface.SendMessage("comResult", new { result = result});
                 return true;
             };
             testTask.resetStep = () =>
             {
                 _webInterface.SendMessage("resetStep", null);
+                return true;
+            };
+            testTask.SyncInfo = (message) =>
+            {
+                _webInterface.SendMessage("hdmessage", new { info = message });
                 return true;
             };
             // 绑定硬件通信委托
@@ -257,13 +287,14 @@ namespace app
                     if (istcp)
                     {
                         // TCP发送逻辑
+                        _tcpClient.Send(data);
                     }
                     else
                     {
                         // 串口发送逻辑
-             
+                        _serial.SendHex(data);
                     }
-                    Console.WriteLine("发送数据:"+ data);
+              
                     return true;
                 }
                 catch (Exception ex)
@@ -272,7 +303,33 @@ namespace app
                     return false;
                 }
             };
+            testTask.ReadReceivedDataFunc = (ishex) =>
+            {
+                if (istcp)
+                {
+                    // TCP发送逻辑
+                    return _tcpClient.getReceverData(ishex);
 
+                }
+                else
+                {
+                    // 串口发送逻辑
+                    return _serial.getReceverData(ishex);
+                }
+            };
+            testTask.ClearReceiveBufferFunc = () =>
+            {
+                if (istcp)
+                {
+                    // TCP发送逻辑
+                     _tcpClient.clearFifo();
+                }
+                else
+                {
+                    // 串口发送逻辑
+                    _serial.ClearReceiveBuffer();
+                }
+            };
             // 启动测试任务
             _ = testTask.RunTaskAsync(once, intervalSeconds, allStep.GetAllStep());
         }
