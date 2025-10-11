@@ -13,20 +13,21 @@ namespace app
         private NetworkStream _netStream;
         private readonly byte[] _recvBuffer = new byte[2048]; // 接收缓冲区
         private int _recvBufferLen = 0; // 当前缓冲区数据长度
+
         // 线程与状态控制
         private Thread _recvThread;
-        private Thread _reconnectThread;
+        private Thread _connectThread; // 合并连接和重连的统一线程
         private bool _isRunning = false;
         private bool _enableAutoReconnect = true;
         private string _targetIp;
         private int _targetPort;
+        private bool _isConnecting = false; // 标记是否正在进行连接操作
 
         // 锁与配置
         private readonly object _netLock = new object();
         private const int RECONNECT_DELAY = 2000;
 
-        // 事件与委托（数据处理直接绑定到读取步骤）
-
+        // 事件与委托
         public event Action OnConnected;
         public event Action OnDisconnected;
         public event Action<string> OnError;
@@ -36,20 +37,19 @@ namespace app
         {
             _tcpClient = new TcpClient(AddressFamily.InterNetwork)
             {
-                NoDelay = true, // 禁用Nagle算法（已设置，保持）
+                NoDelay = true,
                 ReceiveTimeout = 100,
                 SendTimeout = 5000,
-                ReceiveBufferSize = 8192 // 增大接收缓冲区（默认4096，可根据需求调整）
+                ReceiveBufferSize = 8192
             };
-            // 启用TCP保活并优化参数（保持连接活性）
             _tcpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-            // 保活探测间隔（单位：毫秒）
         }
         #endregion
 
         #region 连接与断开
         public bool Connect(string ip, int port)
         {
+            // 参数验证
             if (!IPAddress.TryParse(ip, out _) && !ip.Equals("localhost", StringComparison.OrdinalIgnoreCase))
             {
                 OnError?.Invoke("无效IP");
@@ -61,38 +61,19 @@ namespace app
                 return false;
             }
 
-            if (IsConnected()) Disconnect();
+            // 如果已连接则先断开
+            if (IsConnected())
+                Disconnect();
 
+            // 保存目标地址
             _targetIp = ip;
             _targetPort = port;
             _isRunning = true;
+            _enableAutoReconnect = true;
 
-            try
-            {
-                lock (_netLock)
-                {
-                    _tcpClient?.Close();
-                    _tcpClient = new TcpClient(AddressFamily.InterNetwork) { NoDelay = true };
-                    if (!_tcpClient.ConnectAsync(ip, port).Wait(5000))
-                    {
-                        OnError?.Invoke("连接超时");
-                        StartReconnectThread();
-                        return false;
-                    }
-                    _netStream = _tcpClient.GetStream();
-                }
-
-                StartRecvThread();
-                OnConnected?.Invoke();
-                Console.WriteLine($"已连接 {ip}:{port}");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                OnError?.Invoke($"连接失败：{ex.Message}");
-                StartReconnectThread();
-                return false;
-            }
+            // 启动统一的连接管理线程（首次连接和重连共用）
+            StartConnectThread();
+            return true;
         }
 
         public void Disconnect()
@@ -100,9 +81,13 @@ namespace app
             _isRunning = false;
             _enableAutoReconnect = false;
 
-            if (_recvThread != null && _recvThread.IsAlive) _recvThread.Join(1000);
-            if (_reconnectThread != null && _reconnectThread.IsAlive) _reconnectThread.Join(1000);
+            // 终止接收线程和连接管理线程
+            if (_recvThread != null && _recvThread.IsAlive)
+                _recvThread.Join(1000);
+            if (_connectThread != null && _connectThread.IsAlive)
+                _connectThread.Join(1000);
 
+            // 释放网络资源
             lock (_netLock)
             {
                 _netStream?.Dispose();
@@ -111,48 +96,73 @@ namespace app
 
             OnDisconnected?.Invoke();
             Console.WriteLine("已断开连接");
-            _enableAutoReconnect = true;
         }
         #endregion
 
-        #region 自动重连
-        private void StartReconnectThread()
+        #region 连接管理线程（合并首次连接和重连）
+        private void StartConnectThread()
         {
-            if (!_isRunning || !_enableAutoReconnect || (_reconnectThread != null && _reconnectThread.IsAlive))
+            // 避免重复创建线程
+            if (_isConnecting || (_connectThread != null && _connectThread.IsAlive))
                 return;
 
-            _reconnectThread = new Thread(ReconnectLoop) { IsBackground = true };
-            _reconnectThread.Start();
+            _isConnecting = true;
+            _connectThread = new Thread(ConnectAndReconnectLoop)
+            {
+                IsBackground = true,
+                Name = "TcpConnectManager"
+            };
+            _connectThread.Start();
         }
 
-        private void ReconnectLoop()
+        // 统一处理首次连接和重连逻辑
+        private void ConnectAndReconnectLoop()
         {
             while (_isRunning && _enableAutoReconnect)
             {
                 try
                 {
-                    Thread.Sleep(RECONNECT_DELAY);
-                    if (IsConnected()) continue;
+                    // 如果已连接则退出循环（仅重连时需要）
+                    if (IsConnected())
+                    {
+                        _isConnecting = false;
+                        return;
+                    }
 
+                    // 执行连接操作
                     lock (_netLock)
                     {
                         _tcpClient?.Close();
                         _tcpClient = new TcpClient(AddressFamily.InterNetwork) { NoDelay = true };
+                        Console.WriteLine($"尝试连接 {_targetIp}:{_targetPort}");
+
+                        // 连接超时5秒
                         if (_tcpClient.ConnectAsync(_targetIp, _targetPort).Wait(5000))
                         {
                             _netStream = _tcpClient.GetStream();
-                            StartRecvThread();
+                            StartRecvThread(); // 启动接收线程
                             OnConnected?.Invoke();
-                            Console.WriteLine($"重连成功 {_targetIp}:{_targetPort}");
-                            return;
+                            Console.WriteLine($"连接成功 {_targetIp}:{_targetPort}");
+                            _isConnecting = false;
+                            return; // 连接成功，退出循环
+                        }
+                        else
+                        {
+                            OnError?.Invoke("连接超时");
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"重连中...({RECONNECT_DELAY / 1000}秒后重试)");
+                    OnError?.Invoke($"连接失败：{ex.Message}");
                 }
+
+                // 连接失败，延迟后重试（首次连接失败后自动进入重连逻辑）
+                Thread.Sleep(RECONNECT_DELAY);
+                Console.WriteLine($"重连中...({RECONNECT_DELAY / 1000}秒后重试)");
             }
+
+            _isConnecting = false;
         }
         #endregion
 
@@ -164,22 +174,22 @@ namespace app
                 _recvThread = new Thread(ReceiveProcessLoop)
                 {
                     IsBackground = true,
-                    Priority = ThreadPriority.AboveNormal // 提高优先级，确保及时调度
+                    Priority = ThreadPriority.AboveNormal
                 };
                 _recvThread.Start();
             }
         }
+
         public string getReceverData(bool ishex)
         {
-            
-            lock (_netLock) // 加锁确保线程安全
+            lock (_netLock)
             {
                 if (_recvBufferLen == 0)
                     return "";
+
                 string result;
                 if (ishex)
                 {
-                    // 十六进制转换
                     StringBuilder sb = new StringBuilder();
                     for (int i = 0; i < _recvBufferLen; i++)
                     {
@@ -189,23 +199,20 @@ namespace app
                 }
                 else
                 {
-                    // UTF8字符串转换
                     result = Encoding.UTF8.GetString(_recvBuffer, 0, _recvBufferLen);
                 }
                 return result;
             }
         }
+
         public void clearFifo()
         {
             lock (_netLock)
             {
                 _recvBufferLen = 0;
-
             }
         }
-        /// <summary>
-        /// 接收线程：读取数据后直接完成字符串转换和处理
-        /// </summary>
+
         private void ReceiveProcessLoop()
         {
             while (_isRunning)
@@ -215,19 +222,19 @@ namespace app
                     if (!IsConnected() || _netStream == null)
                     {
                         OnError?.Invoke("连接断开，触发重连");
-                        StartReconnectThread();
+                        StartConnectThread(); // 调用统一的连接管理线程进行重连
                         break;
                     }
+
                     int readLen;
                     lock (_netLock)
                     {
-                        // 无数据时，用更短的休眠（1ms）减少检测间隔，同时降低CPU占用
                         if (!_netStream.DataAvailable)
                         {
-                            Thread.Sleep(100); // 缩短等待间隔，减少延迟
+                            Thread.Sleep(5);
                             continue;
                         }
-                        // 读取数据（尽量填满缓冲区剩余空间）
+
                         readLen = _netStream.Read(_recvBuffer, _recvBufferLen, _recvBuffer.Length - _recvBufferLen);
                         if (readLen > 0)
                         {
@@ -236,16 +243,19 @@ namespace app
                         else if (readLen == 0)
                         {
                             OnError?.Invoke("服务器主动断开");
-                            StartReconnectThread();
+                            StartConnectThread(); // 重连
                             break;
                         }
                     }
                 }
-                catch (TimeoutException) { continue; }
+                catch (TimeoutException)
+                {
+                    continue;
+                }
                 catch (Exception ex)
                 {
                     OnError?.Invoke($"接收处理异常：{ex.Message}");
-                    StartReconnectThread();
+                    StartConnectThread(); // 重连
                     break;
                 }
             }
@@ -272,7 +282,7 @@ namespace app
             catch (Exception ex)
             {
                 OnError?.Invoke($"发送失败：{ex.Message}");
-                StartReconnectThread();
+                StartConnectThread(); // 重连
                 return false;
             }
         }
@@ -290,7 +300,10 @@ namespace app
                 {
                     return !_tcpClient.Client.Poll(1, SelectMode.SelectRead) || _tcpClient.Client.Available > 0;
                 }
-                catch { return false; }
+                catch
+                {
+                    return false;
+                }
             }
         }
         #endregion

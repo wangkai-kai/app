@@ -95,6 +95,29 @@
                     .log-scroll-area::-webkit-scrollbar-thumb:hover {
                         background-color: #888;
                     }
+
+            /* 步骤容器和步骤项的全局样式（核心修改） */
+            #execution-steps {
+                height: 340px !important; /* 6个步骤×50px + 5个间距×8px = 340px */
+                overflow-y: auto !important;
+                scrollbar-width: thin !important;
+            }
+
+                #execution-steps .execution-step-item {
+                    height: 50px !important;
+                    padding: 0.75rem !important;
+                    box-sizing: border-box !important;
+                    overflow: hidden !important;
+                    display: flex !important;
+                    align-items: center !important;
+                }
+
+                #execution-steps > div.text-gray-500 {
+                    height: 100% !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                }
         }
     </style>
 </head>
@@ -156,9 +179,7 @@
                         </div>
 
                         <!-- 串口配置参数 -->
-                        <!-- 串口配置参数（新增停止位选择） -->
                         <div id="serial-config" class="flex-1 grid grid-cols-2 md:grid-cols-5 gap-3">
-                            <!-- 原有：端口选择 -->
                             <div class="relative">
                                 <label class="block text-sm font-medium text-gray-700 mb-1">端口</label>
                                 <div class="flex">
@@ -176,10 +197,10 @@
                                 <select id="baud-rate-select" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
                                     <option value="4800">4800</option>
                                     <option value="9600">9600</option>
-                                    <option value="19200">19200</option>
+                                    <option value="19200" selected>19200</option>
                                     <option value="38400">38400</option>
                                     <option value="57600">57600</option>
-                                    <option value="115200" selected>19200</option>
+                                    <option value="115200">115200</option>
                                     <option value="230400">230400</option>
                                     <option value="460800">460800</option>
                                     <option value="921600">921600</option>
@@ -208,31 +229,26 @@
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">停止位</label>
                                 <select id="stop-bits-select" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50">
-                                    <option value="1" selected>1位</option> <!-- 默认1位，最常用 -->
-                                    <option value="1.5">1.5位</option> <!-- 适配部分低速设备（如RS232） -->
-                                    <option value="2">2位</option> <!-- 高可靠性场景使用 -->
+                                    <option value="1" selected>1位</option>
+                                    <option value="1.5">1.5位</option>
+                                    <option value="2">2位</option>
                                 </select>
                             </div>
                         </div>
 
-                        <!-- TCP配置参数（新增连接状态指示器） -->
+                        <!-- TCP配置参数 -->
                         <div id="tcp-config" class="flex-1 hidden grid grid-cols-3 gap-3">
-                            <!-- IP地址配置 -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">IP地址</label>
-                                <input type="text" id="tcp-ip" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" value="192.168.56.1">
+                                <input type="text" id="tcp-ip" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" value="192.168.2.252">
                             </div>
-                            <!-- 端口配置 -->
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">端口</label>
                                 <input type="number" id="tcp-port" class="w-full px-3 py-2 border border-base-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50" value="502" min="1" max="65535">
                             </div>
-                            <!-- 连接状态指示器 -->
                             <div class="flex flex-col justify-end">
-                                <!-- 与输入框底部对齐 -->
                                 <label class="block text-sm font-medium text-gray-700 mb-1">连接状态</label>
                                 <div id="tcp-connect-status" class="flex items-center gap-2 px-3 py-2 border border-red-300 bg-red-50 rounded-md text-red-600">
-                                    <!-- 状态图标（未连接：红色圆圈；已连接：绿色对勾） -->
                                     <span id="status-icon" class="w-3 h-3 rounded-full bg-red-500"></span>
                                     <span id="status-text">未连接</span>
                                 </div>
@@ -240,7 +256,6 @@
                         </div>
 
                         <!-- 打开/关闭控制按钮 -->
-                        <!-- 始终上下排列的简化版 -->
                         <div class="flex flex-col gap-1 w-fit">
                             <label class="block text-sm font-medium text-gray-700">通信</label>
                             <button id="connect-btn" class="flex items-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition">
@@ -248,7 +263,8 @@
                             </button>
                         </div>
                     </div>
-                <div id="file-load-error" class="mt-1 text-sm text-danger hidden">配置文件格式不正确</div>
+                    <div id="file-load-error" class="mt-1 text-sm text-danger hidden">配置文件格式不正确</div>
+                </div>
             </div>
 
             <!-- 测试统计组 -->
@@ -279,26 +295,32 @@
                 </div>
             </div>
 
-            <!-- 步骤进度和日志区域 - 使用flex-grow确保占满剩余空间并底部对齐 -->
+            <!-- 步骤进度和日志区域 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-grow">
-                <!-- 左侧：执行步骤进度 - 使用flexible-container类实现高度自适应 -->
-                <div class="p-4 bg-base-200/50 rounded-lg flexible-container">
-                    <div class="flex justify-between items-center mb-3">
-                        <h3 class="text-lg font-medium">测试步骤进度</h3>
+                <!-- 左侧：执行步骤进度 -->
+                <div class="p-4 bg-base-200/50 rounded rounded-lg flexible-container">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                        <div>
+                            <h3 class="text-lg font-medium">测试步骤进度</h3>
+                            <div id="config-file-name" class="text-sm text-gray-500 mt-1 hidden">
+                                <i class="fa fa-file-text-o mr-1"></i>
+                                <span></span>
+                            </div>
+                        </div>
                         <label for="load-test-config" class="flex items-center px-3 py-1.5 bg-secondary text-white rounded-md hover:bg-secondary/90 transition cursor-pointer text-sm whitespace-nowrap">
                             <i class="fa fa-upload mr-1.5"></i>选择配置文件
                         </label>
                         <input id="load-test-config" type="file" accept=".json" class="hidden">
                     </div>
-                    <div id="execution-steps" class="space-y-2 overflow-auto p-2 border border-base-300 rounded-md bg-white flex-1">
+                    <!-- 步骤容器：使用全局样式控制高度 -->
+                    <div id="execution-steps" class="space-y-2 p-2 border border-base-300 rounded-md bg-white">
                         <div class="text-gray-500 text-center py-16">请加载测试配置文件开始测试</div>
                     </div>
                 </div>
 
-                <!-- 右侧：结果日志 - 使用flexible-container类实现高度自适应 -->
+                <!-- 右侧：结果日志 -->
                 <div class="p-4 bg-base-200/50 rounded-lg flexible-container">
                     <h3 class="text-lg font-medium mb-3">测试结果日志</h3>
-                    <!-- 日志滚动容器 - 使用flex-1使其占满剩余空间 -->
                     <div class="log-scroll-container border border-base-300 rounded-md bg-neutral text-white font-mono text-sm leading-relaxed">
                         <div id="test-log" class="log-scroll-area p-4">
                             <div class="text-gray-400">测试日志将显示在这里...</div>
@@ -322,28 +344,24 @@
     </main>
 
     <script>
-        // 全局状态管理 - 集中管理应用所有状态
+        // 全局状态管理
         const state = {
-            testConfig: null,       // 测试配置数据
-            isTesting: false,       // 是否正在测试
-            isConnected: false,     // 是否已连接
-            testType: 'single',     // 测试类型：single-单次，cycle-循环
-            cycleInterval: 10,      // 循环测试间隔（秒）
-            currentStep: -1,        // 当前执行的步骤索引
-            testStats: {            // 测试统计数据
-                total: 0,
-                pass: 0,
-                fail: 0
-            },
-            testLog: [],            // 测试日志记录
-            cycleTimer: null,       // 循环测试定时器
-            communicationType: 'serial' // 当前通信类型
+            testConfig: null,
+            isTesting: false,
+            isConnected: false,
+            testType: 'single',
+            cycleInterval: 10,
+            currentStep: -1,
+            testStats: { total: 0, pass: 0, fail: 0 },
+            testLog: [],
+            cycleTimer: null,
+            communicationType: 'serial'
         };
 
-        // DOM元素缓存 - 避免重复查询DOM
+        // DOM元素缓存
         const elements = {
             ipInput: document.getElementById('tcp-ip'),
-            portInput:document.getElementById('tcp-port'),
+            portInput: document.getElementById('tcp-port'),
             comPortSelect: document.getElementById('com-port-select'),
             baudRateSelect: document.getElementById('baud-rate-select'),
             dataBitsSelect: document.getElementById('data-bits-select'),
@@ -372,25 +390,20 @@
             exportLog: document.getElementById('export-log')
         };
 
-        let stepElements = []; // 缓存所有步骤节点
-        let stepIconElements = []; // 缓存所有步骤的状态图标节点（右侧的小圆圈图标）
-        const INIT_ICON_CLASS = 'fa fa-circle-o text-gray-300'; // 步骤初始图标（与renderExecutionSteps一致）
-        const INIT_STEP_CLASS = 'p-3 border border-base-300 rounded-md flex items-center'; // 步骤初始样式（与renderExecutionSteps一致）
+        let stepElements = [];
+        let stepIconElements = [];
+        const INIT_ICON_CLASS = 'fa fa-circle-o text-gray-300';
+        const INIT_STEP_CLASS = 'p-3 border border-base-300 rounded-md';
 
-        // 初始化函数 - 应用入口点
+        // 初始化函数
         function init() {
             try {
-                // 初始化事件监听
                 initEventListeners();
-                // 初始化界面状态
                 updateTestStats();
-                // 初始禁用开始测试按钮
                 disableStartTestButton();
                 addTestLog('系统初始化完成', 'info');
 
-                // 添加窗口大小变化监听，确保布局响应式
                 window.addEventListener('resize', () => {
-                    // 滚动到最新日志，确保可视
                     elements.testLog.scrollTop = elements.testLog.scrollHeight;
                 });
             } catch (error) {
@@ -399,37 +412,20 @@
             }
         }
 
-        // 初始化所有事件监听器
+        // 初始化事件监听
         function initEventListeners() {
-            // 测试类型切换
             elements.testTypeSingle.addEventListener('change', () => handleTestTypeChange('single'));
             elements.testTypeCycle.addEventListener('change', () => handleTestTypeChange('cycle'));
-
-            // 循环间隔时间变化
             elements.cycleInterval.addEventListener('change', handleCycleIntervalChange);
-
-            // 通信方式切换
             elements.communicationType.addEventListener('change', handleCommunicationTypeChange);
-
-            // 刷新COM口
             elements.refreshComBtn.addEventListener('click', refreshComPorts);
-
-            // 连接/断开按钮
             elements.connectBtn.addEventListener('click', connectComPort);
-
-            // 测试控制按钮
             elements.startTestBtn.addEventListener('click', startTest);
-           
-
-            // 配置文件加载
             elements.loadTestConfig.addEventListener('change', handleTestConfigLoad);
-
-            // 统计和日志控制
             elements.resetTest.addEventListener('click', resetTestStats);
             elements.clearLog.addEventListener('click', clearLog);
             elements.exportLog.addEventListener('click', exportLog);
 
-            // 接收后端消息的监听器
             window.chrome.webview.addEventListener('message', event => {
                 try {
                     const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
@@ -524,10 +520,7 @@
 
         // 处理COM端口列表更新
         function handleComPortsUpdated(ports) {
-            // 保存当前选中的端口
             const currentPort = elements.comPortSelect.value;
-
-            // 清空并更新端口列表
             elements.comPortSelect.innerHTML = '';
 
             if (ports && ports.length > 0) {
@@ -538,7 +531,6 @@
                     elements.comPortSelect.appendChild(option);
                 });
 
-                // 恢复之前选中的端口（如果存在）
                 if (currentPort && ports.includes(currentPort)) {
                     elements.comPortSelect.value = currentPort;
                 }
@@ -552,7 +544,6 @@
                 addTestLog('未发现可用的COM端口', 'warning');
             }
 
-            // 恢复刷新按钮状态
             elements.refreshComBtn.innerHTML = '<i class="fa fa-refresh text-sm"></i>';
             elements.refreshComBtn.disabled = false;
         }
@@ -562,7 +553,6 @@
             state.isConnected = status.isOpen;
 
             if (state.isConnected) {
-                // 连接成功：用 fa-power-off 替代 fa-unplug
                 elements.connectBtn.innerHTML = '<i class="fa fa-power-off mr-2"></i>关闭';
                 elements.connectBtn.classList.remove('bg-primary');
                 elements.connectBtn.classList.add('bg-danger');
@@ -572,42 +562,33 @@
                     enableStartTestButton();
                 }
             } else {
-                // 连接关闭：保持 fa-plug（正确）
                 elements.connectBtn.innerHTML = '<i class="fa fa-plug mr-2"></i>打开';
                 elements.connectBtn.classList.remove('bg-danger');
                 elements.connectBtn.classList.add('bg-primary');
-                addTestLog('连接已关闭', 'info'); // 更通用的描述（兼容TCP/串口）
+                addTestLog('连接已关闭', 'info');
                 updateCurrentStatus('未连接');
                 disableStartTestButton();
             }
 
-            // 确保按钮始终可用
             elements.connectBtn.disabled = false;
         }
+
         // 同步TCP客户端的状态
         function handleTCPUpdated(status) {
-            // 获取状态指示器的DOM元素（与之前添加的状态标签对应）
             const statusContainer = document.getElementById('tcp-connect-status');
             const statusIcon = document.getElementById('status-icon');
             const statusText = document.getElementById('status-text');
 
             if (status.online) {
-                // 状态：已连接（绿色样式）
-                // 更新容器样式（边框、背景色）
                 statusContainer.className = 'flex items-center gap-2 px-3 py-2 border border-green-300 bg-green-50 rounded-md text-green-600';
-                // 更新状态图标（绿色圆点）
                 statusIcon.className = 'w-3 h-3 rounded-full bg-green-500';
-                // 更新状态文本
                 statusText.textContent = '已连接';
-                // 可选：禁用IP和端口输入框（连接状态下不允许修改）
                 document.getElementById('tcp-ip').disabled = true;
                 document.getElementById('tcp-port').disabled = true;
             } else {
-                // 状态：未连接/已断开（红色样式）
                 statusContainer.className = 'flex items-center gap-2 px-3 py-2 border border-red-300 bg-red-50 rounded-md text-red-600';
                 statusIcon.className = 'w-3 h-3 rounded-full bg-red-500';
                 statusText.textContent = '未连接';
-                // 可选：启用IP和端口输入框（断开状态下允许修改）
                 document.getElementById('tcp-ip').disabled = false;
                 document.getElementById('tcp-port').disabled = false;
             }
@@ -617,63 +598,54 @@
         function handleComRunUpdated(status) {
             state.isTesting = status.run;
             if (state.isTesting) {
-                // 正在测试时显示停止按钮
                 elements.startTestBtn.innerHTML = '<i class="fa fa-stop mr-2"></i>停止测试';
                 elements.startTestBtn.classList.remove('bg-secondary');
                 elements.startTestBtn.classList.add('bg-danger');
                 addTestLog(`开始${state.testType === 'cycle' ? '循环' : '单次'}测试流程`, 'info');
                 updateCurrentStatus('测试中');
-                // 可以根据需要添加其他状态样式
             } else {
-
-                // 未测试时显示开始按钮
                 elements.startTestBtn.innerHTML = '<i class="fa fa-play mr-2"></i>开始测试';
                 elements.startTestBtn.classList.remove('bg-danger');
                 elements.startTestBtn.classList.add('bg-secondary');
-                // 根据连接状态决定是否禁用
                 elements.startTestBtn.disabled = !state.isConnected || !state.testConfig;
                 addTestLog(`结束${state.testType === 'cycle' ? '循环' : '单次'}测试流程`, 'info');
                 updateCurrentStatus('已完成');
             }
         }
+
         // 处理测试结果运行状态
         function handleComResultUpdated(status) {
             if (status.result) {
                 state.testStats.pass++;
-            }
-            else {
+            } else {
                 state.testStats.fail++;
             }
             state.testStats.total++;
             updateTestStats();
         }
-        //刷新步骤
+
+        // 刷新步骤
         function handleStepUpdated(step) {
-            // 1. 校验参数是否完整
             if (step?.index == null || !step.active) {
                 addTestLog(`步骤更新数据无效：${JSON.stringify(step)}`, 'warning');
                 return;
             }
-            // 2. 调用状态更新函数
             setStepStatus(step.index, step.active);
         }
+
         // 刷新COM口列表
         function refreshComPorts() {
             if (state.communicationType !== 'serial') return;
 
             addTestLog('正在刷新COM端口列表...', 'info');
-
             elements.refreshComBtn.innerHTML = '<i class="fa fa-spinner fa-spin text-sm"></i>';
             elements.refreshComBtn.disabled = true;
 
             try {
-                // 发送命令到后端，请求刷新COM端口
                 const command = {
                     command: 'refreshComPorts',
                     parameters: {}
                 };
-
-                // 通过WebView2发送消息给C#后端
                 window.chrome.webview.postMessage(JSON.stringify(command));
             } catch (error) {
                 addTestLog(`刷新COM端口失败: ${error.message}`, 'fail');
@@ -686,26 +658,22 @@
         function connectComPort() {
             try {
                 if (state.isConnected) {
-                    // 发送关闭端口命令
                     const command = {
                         command: 'closeComPort',
                         parameters: {}
                     };
                     window.chrome.webview.postMessage(JSON.stringify(command));
-                }
-                else {
-                    // 获取串口配置参数
-                    if (state.communicationType === 'serial')
-                    {
+                } else {
+                    if (state.communicationType === 'serial') {
                         const portName = elements.comPortSelect.value;
-                        if (!state.isConnected && (!portName || portName.trim() === '')) {
+                        if (!portName || portName.trim() === '') {
                             addTestLog('请先选择 COM 端口', 'warning');
                             return;
                         }
-                        const baudRate = parseInt(elements.baudRateSelect.value);//波特率
-                        const dataBits = parseInt(elements.dataBitsSelect.value);//数据位
-                        const parity = elements.paritySelect.value;//校验位
-                        const stops = elements.stopBits.value;//校验位
+                        const baudRate = parseInt(elements.baudRateSelect.value);
+                        const dataBits = parseInt(elements.dataBitsSelect.value);
+                        const parity = elements.paritySelect.value;
+                        const stops = elements.stopBits.value;
                         const command = {
                             command: 'openComPort',
                             parameters: {
@@ -718,11 +686,9 @@
                             }
                         };
                         window.chrome.webview.postMessage(JSON.stringify(command));
-                    }
-                    //获取TCP参数
-                    else {
-                        const tcpIp = elements.ipInput.value;//ip
-                        const tcpPort = parseInt(elements.portInput.value);//port
+                    } else {
+                        const tcpIp = elements.ipInput.value;
+                        const tcpPort = parseInt(elements.portInput.value);
                         const command = {
                             command: 'openComPort',
                             parameters: {
@@ -733,7 +699,6 @@
                         };
                         window.chrome.webview.postMessage(JSON.stringify(command));
                     }
-                   
                 }
                 elements.connectBtn.disabled = true;
                 elements.connectBtn.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>处理中';
@@ -751,8 +716,9 @@
             const file = event.target.files[0];
             if (!file) return;
 
-            // 重置错误提示
             elements.fileLoadError.classList.add('hidden');
+            const configNameEl = document.getElementById('config-file-name');
+            configNameEl.classList.add('hidden');
 
             if (!file.name.endsWith('.json')) {
                 showFileError('请选择JSON格式的配置文件');
@@ -763,50 +729,24 @@
             reader.onload = function (e) {
                 try {
                     const config = JSON.parse(e.target.result);
-
-                    // 验证配置格式
                     if (!Array.isArray(config) || config.length === 0) {
                         throw new Error('配置文件必须包含至少一个测试步骤');
                     }
 
-                    // 验证每个步骤的格式
-                    config.forEach((step, index) => {
-                        if (!step.type || !step.name) {
-                            throw new Error(`步骤 ${index + 1} 格式不正确，缺少必要属性`);
-                        }
-                    });
-
-                    // 加载成功
+                    configNameEl.querySelector('span').textContent = file.name;
+                    configNameEl.classList.remove('hidden');
+                    renderExecutionSteps(config);
+                    addTestLog(`已加载测试配置: ${file.name}，共 ${config.length} 个步骤`, 'info');
                     state.testConfig = config;
-
-                    // 关键修改：将配置数据发送到C#
-                    if (window.chrome && window.chrome.webview) {
-                        // 构造消息格式（包含命令和数据）
-                        const message = {
-                            command: "ConfigLoaded",  // 命令标识，C#端将通过此标识识别消息
-                            data: config             // 配置数据
-                        };
-                        // 发送消息到C#
-                        window.chrome.webview.postMessage(JSON.stringify(message));
-                        addTestLog("配置数据已发送到系统", "info");
-                    }
-
-                    // 其他原有逻辑...
                     if (state.isConnected) {
                         enableStartTestButton();
                     }
-                    renderExecutionSteps(config);
-                    addTestLog(`已加载测试配置: ${file.name}，共 ${config.length} 个步骤`, 'info');
 
                 } catch (error) {
                     showFileError(`加载失败: ${error.message}`);
-                    state.testConfig = null;
-                    disableStartTestButton();
                 }
             };
             reader.readAsText(file);
-
-            // 重置文件输入，允许重复选择同一文件
             event.target.value = '';
         }
 
@@ -814,8 +754,6 @@
         function showFileError(message) {
             elements.fileLoadError.textContent = message;
             elements.fileLoadError.classList.remove('hidden');
-
-            // 3秒后自动隐藏错误提示
             setTimeout(() => {
                 elements.fileLoadError.classList.add('hidden');
             }, 3000);
@@ -823,86 +761,52 @@
 
         // 渲染执行步骤列表
         function renderExecutionSteps(steps) {
-            // 1. 清空容器并初始化文档片段（减少DOM重绘）
             const executionStepsEl = elements.executionSteps;
             executionStepsEl.innerHTML = '';
-            const documentFragment = document.createDocumentFragment(); // 文档片段批量添加DOM
+            const documentFragment = document.createDocumentFragment();
 
-            // 2. 定义步骤类型与左侧标的映射（减少条件判断，提升可读性）
             const stepTypeIconMap = {
                 send: '<i class="fa fa-paper-plane text-primary mr-2"></i>',
                 delay: '<i class="fa fa-clock-o text-warning mr-2"></i>',
                 receive: '<i class="fa fa-inbox text-secondary mr-2"></i>',
-                default: '<i class="fa fa-cog text-primary mr-2"></i>' // 默认图标
+                default: '<i class="fa fa-cog text-primary mr-2"></i>'
             };
 
-            // 3. 遍历步骤，构建DOM（使用文档片段减少重绘）
             steps.forEach((step, index) => {
                 const stepEl = document.createElement('div');
-                // 添加专属类名，便于后续精准选择（避免误选其他div）
-                stepEl.className = `${INIT_STEP_CLASS} execution-step-item`;
-                stepEl.dataset.index = index; // 存储索引，便于后续定位
+                stepEl.className = 'execution-step-item p-3 border border-base-300 rounded-md';
+                stepEl.dataset.index = index;
 
-                // 3.1 根据步骤类型获取左侧图标（使用映射表替代多重if-else）
                 const leftIcon = stepTypeIconMap[step.type] || stepTypeIconMap.default;
-
-                // 3.2 构建步骤HTML结构（提取模板字符串，提升可读性）
                 stepEl.innerHTML = `
-            <div class="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-xs mr-3 flex-shrink-0">
-                ${index + 1}
-            </div>
-            <div class="flex-1">
-                <div class="font-medium">${escapeHtml(step.name)}</div> <!-- 防XSS注入 -->
-                <div class="text-xs text-gray-500">${getStepDetails(step)}</div>
-            </div>
-            <div class="w-6 text-center step-status-icon-container"> <!-- 增加容器类名，便于选择 -->
-                <i class="${INIT_ICON_CLASS}"></i>
-            </div>
-        `;
-
-                // 添加到文档片段（暂不插入DOM，减少重绘）
+                        <div class="w-6 h-6 rounded-full bg-primary text-white flex items-center justify-center text-xs mr-3 flex-shrink-0">
+                            ${index + 1}
+                        </div>
+                        <div class="flex-1 overflow-hidden">
+                            <div class="font-medium truncate text-sm">${escapeHtml(step.name)}</div>
+                            <div class="text-xs text-gray-500 truncate">${getStepDetails(step)}</div>
+                        </div>
+                        <div class="w-6 text-center step-status-icon-container">
+                            <i class="${INIT_ICON_CLASS}"></i>
+                        </div>
+                    `;
                 documentFragment.appendChild(stepEl);
             });
 
-            // 4. 一次性将所有步骤添加到容器（触发一次DOM重绘）
             executionStepsEl.appendChild(documentFragment);
 
-            // 5. 精准初始化步骤缓存（解决选择器不准确问题）
-            // 只选择带专属类名的步骤元素，避免误选其他div
             stepElements = Array.from(executionStepsEl.querySelectorAll('.execution-step-item'));
-            // 精准选择状态图标（使用直接子元素选择器，确保唯一性）
-            stepIconElements = stepElements.map(step => {
-                const iconContainer = step.querySelector('.step-status-icon-container');
-                const icon = iconContainer?.querySelector('i') || null;
+            stepIconElements = stepElements.map(step => step.querySelector('.step-status-icon-container i'));
 
-                // 容错：若图标不存在，自动创建并添加（避免后续报错）
-                if (!icon) {
-                    console.warn(`步骤 ${step.dataset.index} 缺少状态图标，已自动补充`);
-                    const newIcon = document.createElement('i');
-                    newIcon.className = INIT_ICON_CLASS;
-                    iconContainer.appendChild(newIcon);
-                    return newIcon;
-                }
-                return icon;
-            });
-
-            // 6. 打印初始化日志（便于调试缓存准确性）
-            console.log(`步骤列表渲染完成：`);
-            console.log(`- 传入步骤数：${steps.length}`);
-            console.log(`- 实际渲染数：${stepElements.length}`);
-            console.log(`- 图标缓存数：${stepIconElements.length}`);
-
-            // 7. 校验缓存一致性（提前暴露数据不匹配问题）
-            if (stepElements.length !== steps.length) {
-                console.error(`步骤数不匹配！传入${steps.length}个，实际渲染${stepElements.length}个`);
+            if (steps.length > 6) {
+                const totalHint = document.createElement('div');
+                totalHint.className = 'text-xs text-gray-500 mt-2 text-center';
+                totalHint.innerHTML = `共 ${steps.length} 个步骤，可滚动查看全部`;
+                executionStepsEl.appendChild(totalHint);
             }
         }
 
-        /**
-         * 辅助函数：HTML转义（防止XSS注入）
-         * @param {string} str - 原始字符串
-         * @returns {string} 转义后的字符串
-         */
+        // HTML转义
         function escapeHtml(str) {
             if (!str) return '';
             return str
@@ -922,7 +826,6 @@
 
             switch (step.type) {
                 case 'send':
-                    // 只显示内容摘要
                     const contentPreview = step.content && step.content.length > 20
                         ? step.content.substring(0, 20) + '...'
                         : step.content || '未设置内容';
@@ -952,9 +855,8 @@
             setStartTestState();
         }
 
-        //更新开始/停止测试按键状态
+        // 更新开始/停止测试按键状态
         function setStartTestState() {
-
             try {
                 const once = state.testType;
                 const time = parseInt(elements.cycleInterval.value);
@@ -972,6 +874,7 @@
                 addTestLog(`启动测试: ${error.message}`, 'fail');
             }
         }
+
         // 重置测试统计
         function resetTestStats() {
             if (state.isTesting) {
@@ -979,66 +882,32 @@
                 return;
             }
 
-            state.testStats = {
-                total: 0,
-                pass: 0,
-                fail: 0
-            };
+            state.testStats = { total: 0, pass: 0, fail: 0 };
             updateTestStats();
             addTestLog('测试统计已重置', 'info');
         }
 
-        // 更新步骤执行状态UI
-        function updateExecutionStep(index, status) {
-            const steps = elements.executionSteps.querySelectorAll('div');
-            if (index >= steps.length) return;
-
-            // 重置所有步骤状态
-            steps.forEach(step => {
-                step.classList.remove('execution-step-active', 'execution-step-pass', 'execution-step-fail');
-            });
-
-            // 更新当前步骤状态
-            const currentStep = steps[index];
-            if (status === 'active') {
-                currentStep.classList.add('execution-step-active');
-                currentStep.querySelector('.fa').className = 'fa fa-spinner fa-spin';
-            } else if (status === 'pass') {
-                currentStep.classList.add('execution-step-pass');
-                currentStep.querySelector('.fa').className = 'fa fa-check text-secondary';
-            } else if (status === 'fail') {
-                currentStep.classList.add('execution-step-fail');
-                currentStep.querySelector('.fa').className = 'fa fa-times text-danger';
-            }
-        }
-
-        
-        function setStepStatus(index, status)
-        {
-            // 前置校验：缓存未初始化则报错
+        // 设置步骤状态
+        function setStepStatus(index, status) {
             if (stepElements.length === 0) {
                 console.error('请先调用 initStepCache 初始化步骤缓存');
                 return;
             }
-            // 前置校验：索引合法性
             if (typeof index !== 'number' || index < 0 || index >= stepElements.length) {
                 console.error(`无效索引：${index}，有效范围 0-${stepElements.length - 1}`);
                 return;
             }
-            // 前置校验：状态合法性
             const validStatus = ['active', 'pass', 'fail'];
             if (!validStatus.includes(status)) {
                 console.error(`无效状态：${status}，仅支持 ${validStatus.join('/')}`);
                 return;
             }
 
-            // 1. 先移除当前步骤的所有状态类（避免类冲突）
             const targetStep = stepElements[index];
             const targetIcon = stepIconElements[index];
             targetStep.classList.remove('execution-step-active', 'execution-step-pass', 'execution-step-fail');
-            targetIcon.className = INIT_ICON_CLASS; // 先重置图标，再更新新状态
+            targetIcon.className = INIT_ICON_CLASS;
 
-            // 2. 根据状态添加对应类和图标
             switch (status) {
                 case 'active':
                     targetStep.classList.add('execution-step-active');
@@ -1053,42 +922,30 @@
                     targetIcon.className = 'fa fa-times text-danger';
                     break;
             }
-            console.log(`步骤 ${index} 状态已更新为：${status}`);
         }
+
+        // 重置所有步骤
         function resetAllSteps() {
-            // 若没有步骤，直接返回
             if (stepElements.length === 0) {
                 console.warn('没有步骤可重置');
                 return;
             }
 
-            // 遍历所有步骤重置
             stepElements.forEach((step, index) => {
-                // 移除所有状态类（活跃/成功/失败）
                 step.classList.remove('execution-step-active', 'execution-step-pass', 'execution-step-fail');
-
-                // 重置图标为初始状态
                 const icon = stepIconElements[index];
                 if (icon) {
-                    icon.className = INIT_ICON_CLASS; // 恢复初始图标
+                    icon.className = INIT_ICON_CLASS;
                 }
             });
-
-            console.log(`已重置 ${stepElements.length} 个步骤`);
         }
 
-        // 添加测试日志（自动滚动到底部）
+        // 添加测试日志
         function addTestLog(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
 
-            // 保存日志到状态
-            state.testLog.push({
-                time: timestamp,
-                message: message,
-                type: type
-            });
+            state.testLog.push({ time: timestamp, message: message, type: type });
 
-            // 更新UI
             let logClass = '';
             let icon = '<i class="fa fa-info-circle mr-2"></i>';
 
@@ -1107,14 +964,11 @@
             logEntry.className = `mb-1 ${logClass}`;
             logEntry.innerHTML = `[${timestamp}] ${icon}${message}`;
 
-            // 清空初始提示
             if (elements.testLog.querySelector('.text-gray-400')) {
                 elements.testLog.innerHTML = '';
             }
 
             elements.testLog.appendChild(logEntry);
-
-            // 自动滚动到最新日志
             elements.testLog.scrollTop = elements.testLog.scrollHeight;
         }
 
@@ -1131,7 +985,6 @@
                 return;
             }
 
-            // 格式化日志内容
             let logContent = "测试日志记录\n";
             logContent += "==============================\n";
             logContent += `导出时间: ${new Date().toLocaleString()}\n\n`;
@@ -1140,7 +993,6 @@
                 logContent += `[${entry.time}] ${entry.message}\n`;
             });
 
-            // 创建并下载日志文件
             try {
                 const blob = new Blob([logContent], { type: 'text/plain' });
                 const url = URL.createObjectURL(blob);
